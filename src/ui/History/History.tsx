@@ -24,9 +24,14 @@ export function History({ notes, paused }: HistoryProps) {
   const [revision, setRevision] = useState(0);
   const rows = useMemo(
     () => keepSpaced(notes, MIN_SPACING_PX, DEFAULT_GEOMETRY.pxPerMs),
-    // `notes` is mutated in place, so `revision` (not its own array identity)
-    // is what signals a real change; it is intentionally a dependency even
-    // though it is otherwise unused in the body.
+    // `notes` is mutated in place, so its identity never changes; `revision`
+    // is what signals a real change instead. The rAF loop below bumps it
+    // whenever `notes.length` OR the newest note's `start` differs from the
+    // previous tick — length alone goes silent once the 60s history window
+    // is full, because each new note-on prunes roughly one old note and
+    // length stops moving, even though the visible set keeps changing. It is
+    // intentionally a dependency even though it is otherwise unused in the
+    // body.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
     [notes, revision],
   );
@@ -38,12 +43,20 @@ export function History({ notes, paused }: HistoryProps) {
 
     let frame = 0;
     let lastCount = -1;
+    let lastStart: number | undefined;
 
     const tick = () => {
       frame = requestAnimationFrame(tick);
 
-      if (notes.length !== lastCount) {
+      // Length alone is not a sound change-signal: once the history window is
+      // full, an append and a prune happen together and length stays put. The
+      // newest note's `start` still moves on every append (notes arrive in
+      // strictly increasing timestamp order), so checking both catches every
+      // real change while staying O(1) — no array walk, no signature string.
+      const newestStart = notes[notes.length - 1]?.start;
+      if (notes.length !== lastCount || newestStart !== lastStart) {
         lastCount = notes.length;
+        lastStart = newestStart;
         setRevision((r) => r + 1);
       }
 

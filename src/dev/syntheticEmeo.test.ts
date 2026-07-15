@@ -72,6 +72,35 @@ describe('synthetic EMEO', () => {
     expect(() => startSynthetic({ isSecureContext: true })).toThrow(TypeError);
   });
 
+  it('anchors emitted timestamps to performance.now() at start, not a zero-based clock', async () => {
+    // Real MIDIMessageEvent.timeStamp shares the DOMHighResTimeStamp epoch with
+    // performance.now(). Stage and History both draw using `performance.now()`
+    // as "now" against event timestamps, so a synthetic clock starting at 0
+    // creates a large, silent offset that pushes every note block and breath
+    // sample off-canvas the moment real time has advanced past the visible
+    // window (~15s) since the page loaded.
+    const env = createSyntheticEnvironment();
+    const conn = createEmeoConnection(env);
+    const events: EmeoEvent[] = [];
+    conn.events.subscribe((e: EmeoEvent) => events.push(e));
+    await conn.connect();
+
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(50_000);
+    const stop = startSynthetic(env);
+    vi.advanceTimersByTime(30);
+    stop();
+    nowSpy.mockRestore();
+
+    // `raw` fires unconditionally on every incoming message, unlike `breath`
+    // (gated behind detector lock) or `note-on`/`note-off` (gated behind tempo
+    // boundaries) — so it is the reliable signal within a short 30ms window.
+    const rawEvents = events.filter((e) => e.kind === 'raw');
+    expect(rawEvents.length).toBeGreaterThan(0);
+    for (const e of rawEvents) {
+      expect(e.t).toBeGreaterThanOrEqual(50_000);
+    }
+  });
+
   it('emits a note-off for the currently sounding note when stopped', async () => {
     const env = createSyntheticEnvironment();
     const conn = createEmeoConnection(env);

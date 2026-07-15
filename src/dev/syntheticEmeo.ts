@@ -59,12 +59,21 @@ export function startSynthetic(env: MidiEnvironment): () => void {
   const { __input: input, __options: options } = env;
   env.__running = true;
 
+  // Real MIDIMessageEvent.timeStamp is a DOMHighResTimeStamp — the same epoch
+  // as performance.now(). Stage and History both draw using performance.now()
+  // as "now" against event timestamps (see Stage.tsx), so a synthetic clock
+  // that started counting from 0 would create a large, silent offset that
+  // pushes every note block and breath sample off-canvas. `elapsed` still
+  // starts at 0 and drives the phrase's internal timing (phase, note
+  // boundaries) unchanged; only the timestamp actually emitted is anchored to
+  // real time.
+  const origin = performance.now();
   let elapsed = 0;
   let noteIndex = 0;
   let currentNote: number | null = null;
 
   const send = (...bytes: number[]) => {
-    input.onmidimessage?.({ data: new Uint8Array(bytes), timeStamp: elapsed });
+    input.onmidimessage?.({ data: new Uint8Array(bytes), timeStamp: origin + elapsed });
   };
 
   const sendBreath = (value: number) => {

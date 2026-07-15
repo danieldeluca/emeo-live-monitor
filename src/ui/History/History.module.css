@@ -1,0 +1,49 @@
+.history {
+  width: 92px;
+  flex: none;
+  position: relative;
+  overflow: hidden;
+  background: var(--color-surface);
+  border-radius: var(--radius);
+  font-family: var(--font-ui);
+  /* Positional fade — replaces per-row opacity, so no row needs per-frame work. */
+  mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+}
+
+/* Moved as a rigid body: one transform per frame carries every row. */
+.scroller {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding: 0 var(--space-2);
+}
+
+.en {
+  font-weight: 800;
+  color: var(--color-text);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-size: 0.85rem;
+}
+
+.eu {
+  color: var(--color-text-muted);
+  line-height: 1.05;
+  font-size: 0.65rem;
+}
+
+.current .en {
+  font-size: 1.35rem;
+}
+
+.current .eu {
+  font-size: 0.8rem;
+}

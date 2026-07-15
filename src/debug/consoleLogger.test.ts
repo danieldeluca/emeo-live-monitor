@@ -18,13 +18,32 @@ describe('isDebugEnabled', () => {
 describe('attachConsoleLogger', () => {
   it('logs raw messages in readable form', () => {
     const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
     const events = new EventBus<EmeoEvent>();
     attachConsoleLogger(events, new BreathDetector());
 
     events.publish({ kind: 'raw', data: new Uint8Array([0x90, 60, 100]), t: 1 });
 
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('Note On'), expect.anything());
-    spy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it('F6: emits a one-time hint on attach that raw messages log at Verbose level', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    vi.spyOn(console, 'debug').mockImplementation(() => {});
+    const events = new EventBus<EmeoEvent>();
+
+    attachConsoleLogger(events, new BreathDetector());
+
+    const hints = info.mock.calls.filter(([msg]) => String(msg).includes('Verbose'));
+    expect(hints).toHaveLength(1);
+
+    // Publishing more raw messages must not repeat the hint.
+    events.publish({ kind: 'raw', data: new Uint8Array([0x90, 60, 100]), t: 1 });
+    events.publish({ kind: 'raw', data: new Uint8Array([0x90, 62, 100]), t: 2 });
+    expect(info.mock.calls.filter(([msg]) => String(msg).includes('Verbose'))).toHaveLength(1);
+
+    vi.restoreAllMocks();
   });
 
   it('announces the detected breath source once, not per message', () => {
@@ -50,6 +69,7 @@ describe('attachConsoleLogger', () => {
 
   it('stops logging once detached', () => {
     const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
     const events = new EventBus<EmeoEvent>();
     const off = attachConsoleLogger(events, new BreathDetector());
     off();
@@ -57,6 +77,6 @@ describe('attachConsoleLogger', () => {
     events.publish({ kind: 'raw', data: new Uint8Array([0x90, 60, 100]), t: 1 });
 
     expect(spy).not.toHaveBeenCalled();
-    spy.mockRestore();
+    vi.restoreAllMocks();
   });
 });

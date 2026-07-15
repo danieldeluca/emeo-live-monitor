@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { BreathRing } from '../../core/model/ringBuffer';
 import { STAGE_GUTTER, drawStage } from './draw';
+import { shouldDrawFrame } from './frameGate';
 import { readTokens, type NoteBlock } from './geometry';
 import { DEFAULT_GEOMETRY } from './timeToY';
 import styles from './Stage.module.css';
@@ -14,15 +15,19 @@ interface StageProps {
    */
   notes: NoteBlock[];
   paused: boolean;
+  /** Bumped by App on Clear. Forces one repaint even while paused (§7.5, F2). */
+  contentToken: number;
 }
 
 const PITCH_MIN = 48;
 const PITCH_MAX = 84;
 
-export function Stage({ ring, notes, paused }: StageProps) {
+export function Stage({ ring, notes, paused, contentToken }: StageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  const tokenRef = useRef(contentToken);
+  tokenRef.current = contentToken;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -32,12 +37,16 @@ export function Stage({ ring, notes, paused }: StageProps) {
 
     const tokens = readTokens(canvas);
     let frame = 0;
+    let lastDrawnToken = tokenRef.current;
 
     const render = () => {
       frame = requestAnimationFrame(render);
       // Pause freezes the display, not the instrument: the core keeps running so
       // connection state, disconnect detection, and breath detection still work.
-      if (pausedRef.current) return;
+      // Clear is the one exception — it must still repaint once while paused,
+      // or the canvas is left showing the pre-clear picture (F2).
+      if (!shouldDrawFrame(pausedRef.current, tokenRef.current, lastDrawnToken)) return;
+      lastDrawnToken = tokenRef.current;
 
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();

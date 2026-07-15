@@ -21,6 +21,17 @@ export function attachConsoleLogger(
 ): Unsubscribe {
   let announced = false;
 
+  // console.debug is filterable — deliberately so, per the class doc above —
+  // but Chrome and Edge hide Verbose-level messages by default. Without this
+  // hint, a developer plugging in the first real EMEO with ?debug would see
+  // the breath-source verdict below and an apparently empty log otherwise,
+  // leaving design §12.3 and §12.5 unanswerable in practice. One line,
+  // emitted once on attach rather than per message, fixes that without
+  // reintroducing the cost of logging every message at a visible level.
+  console.info(
+    '[emeo] raw MIDI messages are logged at Verbose level — enable "Verbose" in the console log-level filter to see them.',
+  );
+
   return events.subscribe((event) => {
     if (event.kind !== 'raw') return;
 

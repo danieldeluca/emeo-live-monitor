@@ -31,9 +31,11 @@ interface Sample {
  * evidence clears every threshold locks the source, evaluated eagerly as each
  * message is observed. No candidate — not even CC2, the MIDI standard's
  * Breath Controller — gets a prior; the EMEO's actual encoding is
- * unconfirmed, so ties are broken purely by whichever control has the most
- * updates in the window at the moment of evaluation. Once a source locks it
- * stays locked for the session so the display cannot flap mid-phrase.
+ * unconfirmed. Evaluation happens per incoming message, and only one
+ * candidate's evidence is updated per message, so at most one candidate can
+ * ever qualify in a given evaluation — there is no tie to break. Once a
+ * source locks it stays locked for the session so the display cannot flap
+ * mid-phrase.
  */
 export class BreathDetector {
   private samples = new Map<string, Sample[]>();

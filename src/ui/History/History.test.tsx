@@ -4,7 +4,9 @@ import { History } from './History';
 
 describe('History', () => {
   it('shows both naming systems for every note, with no toggle (FR-7 deviation)', async () => {
-    render(<History notes={[{ note: 70, start: 0, end: null }]} paused={false} />);
+    render(
+      <History notes={[{ note: 70, start: 0, end: null }]} paused={false} contentToken={0} />,
+    );
     expect(await screen.findByText('A♯4')).toBeInTheDocument();
     expect(screen.getByText('La♯4')).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
@@ -15,6 +17,7 @@ describe('History', () => {
       <History
         notes={[{ note: 60, start: 0, end: 100 }, { note: 72, start: 20000, end: null }]}
         paused={false}
+        contentToken={0}
       />,
     );
     await screen.findByText('C5');
@@ -23,7 +26,7 @@ describe('History', () => {
   });
 
   it('renders nothing when no notes have been played', () => {
-    render(<History notes={[]} paused={false} />);
+    render(<History notes={[]} paused={false} contentToken={0} />);
     expect(screen.queryAllByTestId('history-en')).toHaveLength(0);
   });
 
@@ -35,7 +38,7 @@ describe('History', () => {
       { note: 60, start: 0, end: 100 },
       { note: 62, start: 20000, end: null },
     ];
-    render(<History notes={notes} paused={false} />);
+    render(<History notes={notes} paused={false} contentToken={0} />);
     await screen.findByText('C4');
     expect(screen.getByText('D4')).toBeInTheDocument();
 

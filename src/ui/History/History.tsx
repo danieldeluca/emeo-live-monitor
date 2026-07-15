@@ -9,15 +9,19 @@ interface HistoryProps {
   /** Stable array owned by App and mutated in place. Same contract as Stage. */
   notes: NoteBlock[];
   paused: boolean;
+  /** Bumped by App on Clear. Forces a revision bump even while paused (§7.5, F2). */
+  contentToken: number;
 }
 
 const MIN_SPACING_PX = 26;
 
-export function History({ notes, paused }: HistoryProps) {
+export function History({ notes, paused, contentToken }: HistoryProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  const tokenRef = useRef(contentToken);
+  tokenRef.current = contentToken;
 
   // Bumped only when a note is added or pruned — a few times a second, never
   // at frame rate. Label motion is handled by the transform below, not by React.
@@ -44,6 +48,7 @@ export function History({ notes, paused }: HistoryProps) {
     let frame = 0;
     let lastCount = -1;
     let lastStart: number | undefined;
+    let lastToken = tokenRef.current;
 
     const tick = () => {
       frame = requestAnimationFrame(tick);
@@ -53,10 +58,16 @@ export function History({ notes, paused }: HistoryProps) {
       // newest note's `start` still moves on every append (notes arrive in
       // strictly increasing timestamp order), so checking both catches every
       // real change while staying O(1) — no array walk, no signature string.
+      // `contentToken` is a third, explicit signal: it only ever changes on
+      // Clear, and this check runs unconditionally (even while paused), so a
+      // Clear during Pause still empties the visible history (F2) rather than
+      // relying solely on the incidental timing of a length/start change.
       const newestStart = notes[notes.length - 1]?.start;
-      if (notes.length !== lastCount || newestStart !== lastStart) {
+      const tokenChanged = tokenRef.current !== lastToken;
+      if (notes.length !== lastCount || newestStart !== lastStart || tokenChanged) {
         lastCount = notes.length;
         lastStart = newestStart;
+        lastToken = tokenRef.current;
         setRevision((r) => r + 1);
       }
 

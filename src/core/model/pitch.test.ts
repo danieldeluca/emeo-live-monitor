@@ -25,4 +25,21 @@ describe('pitchName', () => {
   it('rejects non-integers', () => {
     expect(() => pitchName(60.5)).toThrow(RangeError);
   });
+
+  it.each([
+    [60, 'C', 'Do'],
+    [61, 'C♯', 'Do♯'],
+    [62, 'D', 'Ré'],
+    [63, 'D♯', 'Ré♯'],
+    [64, 'E', 'Mi'],
+    [65, 'F', 'Fa'],
+    [66, 'F♯', 'Fa♯'],
+    [67, 'G', 'Sol'],
+    [68, 'G♯', 'Sol♯'],
+    [69, 'A', 'La'],
+    [70, 'A♯', 'La♯'],
+    [71, 'B', 'Si'],
+  ])('names MIDI %i as %s / %s in octave 4', (midi, en, eu) => {
+    expect(pitchName(midi)).toMatchObject({ en, eu, octave: 4 });
+  });
 });

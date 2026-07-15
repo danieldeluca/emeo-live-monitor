@@ -71,4 +71,38 @@ describe('synthetic EMEO', () => {
   it('refuses to start against a non-synthetic environment', () => {
     expect(() => startSynthetic({ isSecureContext: true })).toThrow(TypeError);
   });
+
+  it('emits a note-off for the currently sounding note when stopped', async () => {
+    const env = createSyntheticEnvironment();
+    const conn = createEmeoConnection(env);
+    const events: EmeoEvent[] = [];
+    conn.events.subscribe((e: EmeoEvent) => events.push(e));
+    await conn.connect();
+    const stop = startSynthetic(env);
+
+    vi.advanceTimersByTime(700);
+    stop();
+
+    const noteOffs = events.filter(e => e.kind === 'note-off');
+    expect(noteOffs.length).toBeGreaterThan(0);
+    expect(noteOffs[noteOffs.length - 1]).toMatchObject({ kind: 'note-off' });
+  });
+
+  it('stop() called twice does not emit a second note-off and does not throw', async () => {
+    const env = createSyntheticEnvironment();
+    const conn = createEmeoConnection(env);
+    const events: EmeoEvent[] = [];
+    conn.events.subscribe((e: EmeoEvent) => events.push(e));
+    await conn.connect();
+    const stop = startSynthetic(env);
+
+    vi.advanceTimersByTime(700);
+    stop();
+    const eventCountAfterFirstStop = events.length;
+
+    stop();
+    const eventCountAfterSecondStop = events.length;
+
+    expect(eventCountAfterSecondStop).toBe(eventCountAfterFirstStop);
+  });
 });

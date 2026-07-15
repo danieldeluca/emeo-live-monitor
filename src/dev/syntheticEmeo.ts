@@ -15,6 +15,7 @@ const PHRASE = [60, 62, 64, 65, 67, 69, 71, 72];
 interface SyntheticEnvironment extends MidiEnvironment {
   __input: MidiInputLike;
   __options: Required<SyntheticOptions>;
+  __running?: boolean;
 }
 
 /** A fake MIDI environment presenting one input named "Synthetic EMEO". */
@@ -52,7 +53,11 @@ export function startSynthetic(env: MidiEnvironment): () => void {
   if (!isSynthetic(env)) {
     throw new TypeError('startSynthetic requires an environment from createSyntheticEnvironment');
   }
+  if (env.__running) {
+    throw new TypeError('startSynthetic is already running on this environment; call stop() first');
+  }
   const { __input: input, __options: options } = env;
+  env.__running = true;
 
   let elapsed = 0;
   let noteIndex = 0;
@@ -87,5 +92,7 @@ export function startSynthetic(env: MidiEnvironment): () => void {
   return () => {
     clearInterval(timer);
     if (currentNote !== null) send(0x80, currentNote, 0);
+    currentNote = null;
+    env.__running = false;
   };
 }

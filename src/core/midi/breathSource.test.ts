@@ -62,11 +62,11 @@ describe('BreathDetector', () => {
     expect(d.resolved).toBeNull();
   });
 
-  it('prefers CC2 when two candidates both qualify', () => {
+  it('locks the first control to clear the thresholds, even when it is not CC2', () => {
     const d = new BreathDetector();
-    sweepCC(d, 11, 30, 0);
+    sweepCC(d, 11);
     sweepCC(d, 2, 30, 0);
-    expect(d.resolved).toEqual({ kind: 'cc', controller: 2 });
+    expect(d.resolved).toEqual({ kind: 'cc', controller: 11 });
   });
 
   it('does not resolve on evidence spread beyond the window', () => {

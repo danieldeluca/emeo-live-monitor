@@ -17,9 +17,6 @@ const MIN_UPDATES = 20;
 const MIN_DISTINCT = 8;
 const MIN_RANGE = 32;
 
-/** CC2 is the MIDI standard's Breath Controller. It gets a prior, not a guarantee. */
-const PRIOR_KEY = 'cc:2';
-
 interface Sample {
   t: number;
   value: number;
@@ -30,19 +27,19 @@ interface Sample {
  *
  * Scores every candidate — each CC number seen, plus channel pressure — over a
  * rolling window. Breath streams continuously across a wide range; a mod wheel
- * or a switch does not. Resolution is evaluated lazily, against the full
- * accumulated evidence, the first time `resolved` or `valueOf` is read —
- * not the instant a candidate first crosses the bar — so CC2's prior still
- * applies even when CC2's evidence arrives after another control already
- * qualifies. Once a source locks it stays locked for the session so the
- * display cannot flap mid-phrase.
+ * or a switch does not. Evidence alone decides: the first candidate whose
+ * evidence clears every threshold locks the source, evaluated eagerly as each
+ * message is observed. No candidate — not even CC2, the MIDI standard's
+ * Breath Controller — gets a prior; the EMEO's actual encoding is
+ * unconfirmed, so ties are broken purely by whichever control has the most
+ * updates in the window at the moment of evaluation. Once a source locks it
+ * stays locked for the session so the display cannot flap mid-phrase.
  */
 export class BreathDetector {
   private samples = new Map<string, Sample[]>();
   private locked: BreathSourceId | null = null;
 
   get resolved(): BreathSourceId | null {
-    if (this.locked === null) this.tryLock();
     return this.locked;
   }
 
@@ -56,13 +53,14 @@ export class BreathDetector {
     const cutoff = msg.t - WINDOW_MS;
     while (list.length > 0 && list[0].t < cutoff) list.shift();
     this.samples.set(key, list);
+
+    if (this.locked === null) this.tryLock();
   }
 
   valueOf(msg: MidiMessage): number | null {
-    const locked = this.resolved;
-    if (locked === null) return null;
+    if (this.locked === null) return null;
     const key = keyOf(msg);
-    if (key === null || key !== keyOfId(locked)) return null;
+    if (key === null || key !== keyOfId(this.locked)) return null;
     return breathValue(msg);
   }
 
@@ -84,9 +82,7 @@ export class BreathDetector {
     });
     if (qualifying.length === 0) return;
 
-    const prior = qualifying.find(([key]) => key === PRIOR_KEY);
-    const winner =
-      prior ?? qualifying.sort((a, b) => stats(b[1]).updates - stats(a[1]).updates)[0];
+    const winner = qualifying.sort((a, b) => stats(b[1]).updates - stats(a[1]).updates)[0];
     this.locked = idOfKey(winner[0]);
   }
 }

@@ -50,4 +50,19 @@ describe('BreathRing', () => {
     expect(ring.latest).toBeNull();
     expect(collect(ring)).toEqual([]);
   });
+
+  it('reports the most recent sample after a wrap', () => {
+    const ring = new BreathRing(3);
+    for (let i = 1; i <= 5; i++) ring.push(i, i * 10);
+    expect(ring.latest).toEqual({ t: 5, value: 50 });
+  });
+
+  it('filters by minimum timestamp on a wrapped buffer', () => {
+    const ring = new BreathRing(3);
+    for (let i = 1; i <= 5; i++) ring.push(i, i * 10);
+    // Verify iteration order on wrapped buffer
+    expect(collect(ring)).toEqual([[3, 30], [4, 40], [5, 50]]);
+    // Verify filtering works correctly on the wrapped buffer
+    expect(collect(ring, 4)).toEqual([[4, 40], [5, 50]]);
+  });
 });

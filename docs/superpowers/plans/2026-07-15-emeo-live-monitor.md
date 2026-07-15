@@ -102,7 +102,24 @@ Create `src/test/setup.ts`:
 import '@testing-library/jest-dom/vitest';
 ```
 
-Add `"vitest/globals"` to `compilerOptions.types` in `tsconfig.json` so the global `describe`/`it`/`expect` type-check.
+In `tsconfig.json` (or `tsconfig.app.json`, whichever the template generated with the app's
+`compilerOptions`), set these three explicitly — the template's defaults are not sufficient:
+
+```jsonc
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // ES2023 is required: later tasks use Array.prototype.findLast (ES2023)
+    // and Array.prototype.at (ES2022). The template's default lib is older and
+    // `npx tsc --noEmit` will fail on both without this.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    // Makes the global describe/it/expect type-check.
+    "types": ["vitest/globals"]
+  }
+}
+```
+
+Keep every other option the template generated.
 
 Add to `package.json` scripts:
 
@@ -1586,6 +1603,10 @@ describe('synthetic EMEO', () => {
 
     expect(count).toBe(settled);
   });
+
+  it('refuses to start against a non-synthetic environment', () => {
+    expect(() => startSynthetic({ isSecureContext: true })).toThrow(TypeError);
+  });
 });
 ```
 
@@ -1642,9 +1663,18 @@ export function createSyntheticEnvironment(options: SyntheticOptions = {}): Midi
   return env;
 }
 
+function isSynthetic(env: MidiEnvironment): env is SyntheticEnvironment {
+  return '__input' in env && '__options' in env;
+}
+
 /** Begins emitting a scripted performance. Returns a stop function. */
 export function startSynthetic(env: MidiEnvironment): () => void {
-  const { __input: input, __options: options } = env as SyntheticEnvironment;
+  // A guard, not a cast: passing the real browser environment here is a
+  // programming error and should say so rather than fail as `undefined`.
+  if (!isSynthetic(env)) {
+    throw new TypeError('startSynthetic requires an environment from createSyntheticEnvironment');
+  }
+  const { __input: input, __options: options } = env;
 
   let elapsed = 0;
   let noteIndex = 0;
@@ -1686,7 +1716,7 @@ export function startSynthetic(env: MidiEnvironment): () => void {
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `npx vitest run src/dev/syntheticEmeo.test.ts`
-Expected: PASS — 5 tests.
+Expected: PASS — 6 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -2099,6 +2129,7 @@ Expected: PASS — 3 tests.
 Create `src/ui/Header/Header.test.tsx`:
 
 ```tsx
+import type { ComponentProps } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '../../i18n';
@@ -2106,7 +2137,9 @@ import { Header } from './Header';
 
 const noop = () => {};
 
-function renderHeader(props: Partial<React.ComponentProps<typeof Header>> = {}) {
+// `ComponentProps` is imported as a type: under the modern JSX transform there
+// is no `React` binding in scope, and TypeScript rejects the UMD global here.
+function renderHeader(props: Partial<ComponentProps<typeof Header>> = {}) {
   return render(
     <Header
       state={{ status: 'idle' }}

@@ -1,0 +1,28 @@
+{
+  "app": { "title": "EMEO Live Monitor" },
+  "connection": {
+    "connect": "Connect",
+    "disconnect": "Disconnect",
+    "idle": "Not connected",
+    "requesting": "Connecting…",
+    "choosing": "Choose your instrument",
+    "connected": "Connected to {{name}}",
+    "lost": "Connection lost — {{name}}",
+    "reconnect": "Reconnect",
+    "hint": "Connect your EMEO by cable, then click Connect."
+  },
+  "errors": {
+    "insecureContext": "This page must be served over HTTPS (or run on localhost) before your browser will allow access to musical instruments.",
+    "noWebMidi": "This browser cannot connect to musical instruments. Try a browser with Web MIDI support.",
+    "permissionDenied": "Access to your instrument was declined. Click Connect and allow access when your browser asks.",
+    "noPorts": "No instrument detected. A cable connection is the most reliable. If you are using Bluetooth, pair the EMEO in your operating system first — browsers cannot pair it for you.",
+    "unknown": "Something went wrong connecting to your instrument."
+  },
+  "breath": {
+    "label": "Breath",
+    "outOf": "of {{max}}",
+    "detecting": "Blow into the EMEO to detect the breath control"
+  },
+  "notes": { "label": "Note", "now": "Now" },
+  "controls": { "pause": "Pause", "resume": "Resume", "clear": "Clear" }
+}

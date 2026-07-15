@@ -84,4 +84,27 @@ describe('Header', () => {
     renderHeader({ state: { status: 'lost', port: { id: 'a', name: 'EMEO' } } });
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeInTheDocument();
   });
+
+  it('shows the connecting message in requesting state', () => {
+    renderHeader({ state: { status: 'requesting' } });
+    expect(screen.getByText('Connecting…')).toBeInTheDocument();
+  });
+
+  it('shows the no-ports message in error state and offers Connect button', () => {
+    renderHeader({ state: { status: 'error', error: { code: 'no-ports' } } });
+    expect(screen.getByText(/No instrument detected/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument();
+  });
+
+  it('shows the unsupported-browser message for no-web-midi', () => {
+    renderHeader({ state: { status: 'unsupported', reason: 'no-web-midi' } });
+    expect(screen.getByText(/Web MIDI/)).toBeInTheDocument();
+  });
+
+  it('announces status changes via aria-live region (FR-2)', () => {
+    renderHeader();
+    const statusElement = screen.getByText('Not connected').closest('span');
+    expect(statusElement).toHaveAttribute('aria-live', 'polite');
+    expect(statusElement).toHaveAttribute('aria-atomic', 'true');
+  });
 });

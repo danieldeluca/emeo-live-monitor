@@ -25,7 +25,11 @@ export function Header({
     <header className={styles.header}>
       <span className={styles.title}>{t('app.title')}</span>
 
-      <span className={isProblem ? styles.statusError : styles.status}>
+      <span
+        className={isProblem ? styles.statusError : styles.status}
+        aria-live="polite"
+        aria-atomic="true"
+      >
         {t(connectionMessageKey(state), { name })}
       </span>
 

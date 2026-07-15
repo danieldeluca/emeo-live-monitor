@@ -813,11 +813,11 @@ describe('BreathDetector', () => {
     expect(d.resolved).toBeNull();
   });
 
-  it('prefers CC2 when two candidates both qualify', () => {
+  it('locks the first control to clear the thresholds, even when it is not CC2', () => {
     const d = new BreathDetector();
     sweepCC(d, 11, 30, 0);
     sweepCC(d, 2, 30, 0);
-    expect(d.resolved).toEqual({ kind: 'cc', controller: 2 });
+    expect(d.resolved).toEqual({ kind: 'cc', controller: 11 });
   });
 
   it('does not resolve on evidence spread beyond the window', () => {
@@ -907,9 +907,6 @@ const MIN_UPDATES = 20;
 const MIN_DISTINCT = 8;
 const MIN_RANGE = 32;
 
-/** CC2 is the MIDI standard's Breath Controller. It gets a prior, not a guarantee. */
-const PRIOR_KEY = 'cc:2';
-
 interface Sample {
   t: number;
   value: number;
@@ -969,9 +966,8 @@ export class BreathDetector {
     });
     if (qualifying.length === 0) return;
 
-    const prior = qualifying.find(([key]) => key === PRIOR_KEY);
-    const winner =
-      prior ?? qualifying.sort((a, b) => stats(b[1]).updates - stats(a[1]).updates)[0];
+    // Evidence alone: most updates in the window. No control gets a preference.
+    const winner = qualifying.sort((a, b) => stats(b[1]).updates - stats(a[1]).updates)[0];
     this.locked = idOfKey(winner[0]);
   }
 }

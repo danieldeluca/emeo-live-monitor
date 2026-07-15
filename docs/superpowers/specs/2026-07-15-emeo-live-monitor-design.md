@@ -284,9 +284,9 @@ design tokens.
 
 ## 8. Breath source detection (FR-14)
 
-**CC2 is not hard-coded.** The MIDI standard assigns CC2 to Breath Controller, but wind controllers
-variously use CC2, CC11 (Expression), or channel pressure — which is not a control change at all.
-Assuming wrongly yields a dead breath curve with no diagnosis.
+**CC2 is not hard-coded, and carries no special weight.** The MIDI standard assigns CC2 to Breath
+Controller, but wind controllers variously use CC2, CC11 (Expression), or channel pressure — which is
+not a control change at all. Assuming wrongly yields a dead breath curve with no diagnosis.
 
 `breathSource.ts` subscribes to the raw stream and scores every candidate — each CC number observed,
 plus channel pressure — over a rolling 3-second window:
@@ -297,9 +297,19 @@ plus channel pressure — over a rolling 3-second window:
 | Distinct values | Breath sweeps many values; a switch sends two. |
 | Range covered | Breath spans most of 0–127. |
 
-A candidate locks in on clearing all three thresholds: **≥20 updates, ≥8 distinct values, range ≥32,
-within the window.** CC2 receives a prior, not a guarantee: if CC2 qualifies it wins ties
-immediately; if it never moves, the evidence decides.
+**The first candidate to clear all three thresholds wins** — ≥20 updates, ≥8 distinct values, range
+≥32, within the window — and stays locked for the session. Evidence alone decides; CC2 gets no
+preference.
+
+> **Revised during implementation (15 July 2026).** This originally read: *"CC2 receives a prior, not
+> a guarantee: if CC2 qualifies it wins ties immediately."* That rule proved unimplementable.
+> Detection evaluates once per incoming message, and two controls can never cross the thresholds on
+> the *same* message — so whichever crosses first always wins and the tie-break was unreachable code.
+> A prior would require deferring the decision behind a settle window, adding a state machine for
+> negligible benefit: any control that clears these thresholds while someone is playing a wind
+> instrument *is* the breath, and if an instrument mirrors breath onto two controls, both carry
+> identical data and either yields a correct curve. The only cost is that such an instrument might be
+> reported to the console as CC11 rather than CC2, very slightly muddying §12.1's documentation goal.
 
 Until a source locks, the UI reads *"Blow into the EMEO to detect the breath control"* and the
 console prints the candidate scoreboard. The lock holds for the session. `resetBreathDetection()` is

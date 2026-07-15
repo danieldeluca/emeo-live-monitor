@@ -917,8 +917,13 @@ interface Sample {
  *
  * Scores every candidate — each CC number seen, plus channel pressure — over a
  * rolling window. Breath streams continuously across a wide range; a mod wheel
- * or a switch does not. Locks on the first candidate clearing all thresholds,
- * and stays locked for the session so the display cannot flap mid-phrase.
+ * or a switch does not. Evidence alone decides: the first candidate whose
+ * evidence clears every threshold locks the source, evaluated eagerly as each
+ * message is observed. No candidate — not even CC2, the MIDI standard's
+ * Breath Controller — gets a prior; the EMEO's actual encoding is
+ * unconfirmed, so ties are broken purely by whichever control has the most
+ * updates in the window at the moment of evaluation. Once a source locks it
+ * stays locked for the session so the display cannot flap mid-phrase.
  */
 export class BreathDetector {
   private samples = new Map<string, Sample[]>();
@@ -930,10 +935,11 @@ export class BreathDetector {
 
   observe(msg: MidiMessage): void {
     const key = keyOf(msg);
-    if (key === null) return;
+    const value = breathValue(msg);
+    if (key === null || value === null) return;
 
     const list = this.samples.get(key) ?? [];
-    list.push({ t: msg.t, value: msg.value });
+    list.push({ t: msg.t, value });
     const cutoff = msg.t - WINDOW_MS;
     while (list.length > 0 && list[0].t < cutoff) list.shift();
     this.samples.set(key, list);
@@ -945,7 +951,7 @@ export class BreathDetector {
     if (this.locked === null) return null;
     const key = keyOf(msg);
     if (key === null || key !== keyOfId(this.locked)) return null;
-    return (msg as { value: number }).value;
+    return breathValue(msg);
   }
 
   scoreboard(): ScoreRow[] {
@@ -960,21 +966,26 @@ export class BreathDetector {
   }
 
   private tryLock(): void {
-    const qualifying = [...this.samples.entries()].filter(([, list]) => {
+    // At most one candidate can qualify here: observe() records one candidate
+    // per message and locks the instant anything qualifies, so no second
+    // candidate ever gets to cross the thresholds in the same call.
+    const winner = [...this.samples.entries()].find(([, list]) => {
       const s = stats(list);
       return s.updates >= MIN_UPDATES && s.distinct >= MIN_DISTINCT && s.range >= MIN_RANGE;
     });
-    if (qualifying.length === 0) return;
-
-    // Evidence alone: most updates in the window. No control gets a preference.
-    const winner = qualifying.sort((a, b) => stats(b[1]).updates - stats(a[1]).updates)[0];
-    this.locked = idOfKey(winner[0]);
+    if (winner) this.locked = idOfKey(winner[0]);
   }
 }
 
 function keyOf(msg: MidiMessage): string | null {
   if (msg.type === 'cc') return `cc:${msg.controller}`;
   if (msg.type === 'channel-pressure') return 'pressure';
+  return null;
+}
+
+/** Only `cc` and `channel-pressure` messages carry a breath value. */
+function breathValue(msg: MidiMessage): number | null {
+  if (msg.type === 'cc' || msg.type === 'channel-pressure') return msg.value;
   return null;
 }
 

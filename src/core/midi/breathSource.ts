@@ -76,14 +76,14 @@ export class BreathDetector {
   }
 
   private tryLock(): void {
-    const qualifying = [...this.samples.entries()].filter(([, list]) => {
+    // At most one candidate can qualify here: observe() records one candidate
+    // per message and locks the instant anything qualifies, so no second
+    // candidate ever gets to cross the thresholds in the same call.
+    const winner = [...this.samples.entries()].find(([, list]) => {
       const s = stats(list);
       return s.updates >= MIN_UPDATES && s.distinct >= MIN_DISTINCT && s.range >= MIN_RANGE;
     });
-    if (qualifying.length === 0) return;
-
-    const winner = qualifying.sort((a, b) => stats(b[1]).updates - stats(a[1]).updates)[0];
-    this.locked = idOfKey(winner[0]);
+    if (winner) this.locked = idOfKey(winner[0]);
   }
 }
 

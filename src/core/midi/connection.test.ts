@@ -167,4 +167,96 @@ describe('createEmeoConnection', () => {
     await conn.connect();
     expect(statuses).toEqual(['requesting', 'connected']);
   });
+
+  it('ignores a disconnected port and reports no-ports (FR-17 reconnect bug: Web MIDI keeps unplugged ports in the map)', async () => {
+    const input = fakeInput('a', 'EMEO');
+    input.state = 'disconnected';
+    const conn = createEmeoConnection(envWith(fakeAccess(input)));
+    await conn.connect();
+    expect(conn.state).toEqual({ status: 'error', error: { code: 'no-ports' } });
+  });
+
+  it('picks the connected port when the map holds one connected and one disconnected', async () => {
+    const gone = fakeInput('a', 'Gone');
+    gone.state = 'disconnected';
+    const here = fakeInput('b', 'EMEO');
+    const conn = createEmeoConnection(envWith(fakeAccess(gone, here)));
+    await conn.connect();
+    expect(conn.state).toEqual({ status: 'connected', port: { id: 'b', name: 'EMEO' } });
+  });
+
+  it('a second connect() while one is in flight does not regress an established state', async () => {
+    const conn = createEmeoConnection(
+      envWith(fakeAccess(fakeInput('a', 'EMEO'), fakeInput('b', 'Other'))),
+    );
+
+    const first = conn.connect();
+    const second = conn.connect();
+
+    await first;
+    expect(conn.state).toMatchObject({ status: 'choosing' });
+    conn.choosePort('b');
+    expect(conn.state).toEqual({ status: 'connected', port: { id: 'b', name: 'Other' } });
+
+    await second;
+    expect(conn.state).toEqual({ status: 'connected', port: { id: 'b', name: 'Other' } });
+  });
+
+  it('choosePort with an unknown id re-lists the remaining connected ports', async () => {
+    const conn = createEmeoConnection(
+      envWith(fakeAccess(fakeInput('a', 'EMEO'), fakeInput('b', 'Other'))),
+    );
+    await conn.connect();
+    expect(conn.state).toMatchObject({ status: 'choosing' });
+
+    conn.choosePort('nonexistent');
+
+    expect(conn.state).toEqual({
+      status: 'choosing',
+      ports: [{ id: 'a', name: 'EMEO' }, { id: 'b', name: 'Other' }],
+    });
+  });
+
+  it('choosePort with an unknown id and nothing else connected reports no-ports', async () => {
+    const a = fakeInput('a', 'EMEO');
+    const b = fakeInput('b', 'Other');
+    const conn = createEmeoConnection(envWith(fakeAccess(a, b)));
+    await conn.connect();
+    expect(conn.state).toMatchObject({ status: 'choosing' });
+
+    a.state = 'disconnected';
+    b.state = 'disconnected';
+    conn.choosePort('nonexistent');
+
+    expect(conn.state).toEqual({ status: 'error', error: { code: 'no-ports' } });
+  });
+
+  it('disconnect() then connect() recovers to connected', async () => {
+    const input = fakeInput('a', 'EMEO');
+    const conn = createEmeoConnection(envWith(fakeAccess(input)));
+    await conn.connect();
+
+    conn.disconnect();
+    expect(conn.state).toEqual({ status: 'idle' });
+
+    await conn.connect();
+    expect(conn.state).toEqual({ status: 'connected', port: { id: 'a', name: 'EMEO' } });
+  });
+
+  it('reports unsupported with reason no-web-midi when requestMIDIAccess is absent', async () => {
+    const conn = createEmeoConnection({ isSecureContext: true });
+    await conn.connect();
+    expect(conn.state).toEqual({ status: 'unsupported', reason: 'no-web-midi' });
+  });
+
+  it('reports error code unknown for a non-SecurityError throw', async () => {
+    const conn = createEmeoConnection({
+      isSecureContext: true,
+      requestMIDIAccess: async () => {
+        throw new Error('boom');
+      },
+    });
+    await conn.connect();
+    expect(conn.state).toMatchObject({ status: 'error', error: { code: 'unknown' } });
+  });
 });

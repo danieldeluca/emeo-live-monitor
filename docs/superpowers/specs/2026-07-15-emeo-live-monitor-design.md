@@ -376,9 +376,9 @@ guessed the EMEO correctly.
 ## 12. Assumptions to verify against real hardware
 
 > **First hardware session — 16 July 2026.** A real EMEO was connected over USB and its raw MIDI
-> captured via the `?debug` console. Findings are recorded inline below. Items 1, 4, and 5 are now
-> **confirmed**; items 2 and 3 (octave convention and transposition) still need a known written
-> reference pitch to settle and remain open.
+> captured via the `?debug` console. Findings are recorded inline below. Items 1, 4, and 5 were
+> confirmed in the first capture; a **second capture the same day** (a known **written C-major
+> scale**) closed item 3 (transposition) and informed item 2 (octave). **All five are now resolved.**
 
 1. **Which control carries breath.** **CONFIRMED.** The EMEO transmits breath on **three controllers
    at once, with identical values**: CC2 (Breath Controller), CC11 (Expression), and CC7 (Volume),
@@ -387,14 +387,18 @@ guessed the EMEO correctly.
    (a CC2-only hard-code would have been right by luck) and the removal of the CC2 prior in §8 (the
    three are byte-identical, so the choice is immaterial to the curve). Future tools may read any of
    the three; they carry the same data.
-2. **Octave numbering.** Still open. This design uses scientific pitch notation: MIDI 60 = C4 = middle
-   C. Yamaha's convention names that C3. Settling this needs a note played against a known written
-   reference (see item 3).
-3. **Transposition.** Still open. A saxophone is a transposing instrument; on an alto, a written C
-   sounds concert E♭. The first session captured a descending passage (MIDI 61→50, shown as C♯4 down
-   to D3) but without a recorded "this is the written note I fingered" reference, so written-vs-concert
-   cannot yet be concluded. **v1 displays exactly what the EMEO sends.** This matters greatly for the
-   §196 sight-reading trainer. *To close: finger a known written C and record the note name shown.*
+2. **Octave numbering.** **Informed.** This design uses scientific pitch notation: MIDI 60 = C4 =
+   middle C. The written C-major scale in the second capture landed at MIDI 48–59 — displayed C3–B3 —
+   i.e. the octave below middle C. The app renders exactly the MIDI numbers received, consistent with
+   scientific notation. Whether the app's "C3" label matches what the player reads on the page depends
+   only on which written octave was fingered (a display convention, not a hardware fact); the
+   note-number mapping itself is settled. No code change needed for v1.
+3. **Transposition.** **CONFIRMED: none — the EMEO transmits written (fingered) pitch.** The second
+   capture was a **known written C-major scale**; it displayed as C-major naturals (C D E F G A B, no
+   accidentals). A transposing instrument applying concert pitch would have shown flats (a written C
+   scale sounds E♭ major on an alto, B♭ major on a tenor). Pure naturals means the EMEO sends the
+   written note as-is, with no transposition. **v1 already displays exactly this**, so no change is
+   needed — and the future §196 sight-reading trainer can treat incoming MIDI as written pitch directly.
 4. **Breath resolution.** **CONFIRMED: full 0–127.** The captured stream sweeps cleanly from 0 to 127
    and back on all three breath controllers, so the "of 127" readout reflects the instrument's true
    range rather than a rescaled percentage.
@@ -412,7 +416,8 @@ device configuration, no mobile-first requirement.
 
 Additionally out of scope by this design: no session recording or export, no persistence of any kind
 (including `localStorage`), and no musical staff view. The note lane conveys pitch position; a staff
-would raise the transposition question in §12.3 before we have the evidence to answer it.
+is a larger feature deferred to a later tool. (The transposition question a staff would raise is now
+answered — §12.3: the EMEO sends written pitch — so the deferral is about scope, not missing evidence.)
 
 ---
 

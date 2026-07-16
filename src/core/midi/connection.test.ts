@@ -94,11 +94,13 @@ describe('createEmeoConnection', () => {
     expect(raw).toHaveLength(1);
   });
 
-  it('publishes breath events once the detector locks on', async () => {
+  it('publishes breath events once the detector locks on, tagged with their source', async () => {
     const input = fakeInput('a', 'EMEO');
     const conn = createEmeoConnection(envWith(fakeAccess(input)));
-    const breath: number[] = [];
-    conn.events.subscribe((e) => { if (e.kind === 'breath') breath.push(e.value); });
+    const breath: Array<{ source: unknown; value: number }> = [];
+    conn.events.subscribe((e) => {
+      if (e.kind === 'breath') breath.push({ source: e.source, value: e.value });
+    });
     await conn.connect();
 
     // Sweep CC2 until the detector locks, then one more value.
@@ -109,7 +111,45 @@ describe('createEmeoConnection', () => {
     input.onmidimessage!({ data: new Uint8Array([0xb0, 2, 99]), timeStamp: 400 });
 
     expect(conn.detector.resolved).toEqual({ kind: 'cc', controller: 2 });
-    expect(breath.at(-1)).toBe(99);
+    expect(breath.at(-1)).toEqual({ source: { kind: 'cc', controller: 2 }, value: 99 });
+  });
+
+  it('publishes one breath event per qualified source when a frame hits several controllers (design §15.1)', async () => {
+    const input = fakeInput('a', 'EMEO');
+    const conn = createEmeoConnection(envWith(fakeAccess(input)));
+    const breath: Array<{ source: unknown; value: number }> = [];
+    conn.events.subscribe((e) => {
+      if (e.kind === 'breath') breath.push({ source: e.source, value: e.value });
+    });
+    await conn.connect();
+
+    // Mirror the real EMEO: every frame sends CC2, CC11, and CC7 back-to-back
+    // with identical values, sharing one MIDI timestamp. Sweep long enough
+    // for all three to individually qualify (CC2 locks primary first).
+    for (let i = 0; i < 30; i++) {
+      const value = Math.round((i / 29) * 127);
+      const t = i * 10;
+      input.onmidimessage!({ data: new Uint8Array([0xb0, 2, value]), timeStamp: t });
+      input.onmidimessage!({ data: new Uint8Array([0xb0, 11, value]), timeStamp: t });
+      input.onmidimessage!({ data: new Uint8Array([0xb0, 7, value]), timeStamp: t });
+    }
+    expect(conn.detector.sources()).toEqual([
+      { kind: 'cc', controller: 2 },
+      { kind: 'cc', controller: 11 },
+      { kind: 'cc', controller: 7 },
+    ]);
+    breath.length = 0;
+
+    // One shared frame, after all three sources are qualified.
+    input.onmidimessage!({ data: new Uint8Array([0xb0, 2, 50]), timeStamp: 400 });
+    input.onmidimessage!({ data: new Uint8Array([0xb0, 11, 50]), timeStamp: 400 });
+    input.onmidimessage!({ data: new Uint8Array([0xb0, 7, 50]), timeStamp: 400 });
+
+    expect(breath).toEqual([
+      { source: { kind: 'cc', controller: 2 }, value: 50 },
+      { source: { kind: 'cc', controller: 11 }, value: 50 },
+      { source: { kind: 'cc', controller: 7 }, value: 50 },
+    ]);
   });
 
   it('uses the MIDI event timeStamp, not the time of handling', async () => {

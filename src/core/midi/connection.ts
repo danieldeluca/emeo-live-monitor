@@ -78,8 +78,10 @@ export function createEmeoConnection(env: MidiEnvironment): EmeoConnection {
     }
 
     detector.observe(msg);
-    const value = detector.valueOf(msg);
-    if (value !== null) events.publish({ kind: 'breath', value, t });
+    const breath = detector.breathValueOf(msg);
+    if (breath !== null) {
+      events.publish({ kind: 'breath', source: breath.source, value: breath.value, t });
+    }
   }
 
   function detach(): void {

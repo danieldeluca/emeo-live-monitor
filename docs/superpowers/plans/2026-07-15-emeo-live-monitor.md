@@ -102,7 +102,24 @@ Create `src/test/setup.ts`:
 import '@testing-library/jest-dom/vitest';
 ```
 
-Add `"vitest/globals"` to `compilerOptions.types` in `tsconfig.json` so the global `describe`/`it`/`expect` type-check.
+In `tsconfig.json` (or `tsconfig.app.json`, whichever the template generated with the app's
+`compilerOptions`), set these three explicitly — the template's defaults are not sufficient:
+
+```jsonc
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // ES2023 is required: later tasks use Array.prototype.findLast (ES2023)
+    // and Array.prototype.at (ES2022). The template's default lib is older and
+    // `npx tsc --noEmit` will fail on both without this.
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    // Makes the global describe/it/expect type-check.
+    "types": ["vitest/globals"]
+  }
+}
+```
+
+Keep every other option the template generated.
 
 Add to `package.json` scripts:
 
@@ -796,11 +813,11 @@ describe('BreathDetector', () => {
     expect(d.resolved).toBeNull();
   });
 
-  it('prefers CC2 when two candidates both qualify', () => {
+  it('locks the first control to clear the thresholds, even when it is not CC2', () => {
     const d = new BreathDetector();
     sweepCC(d, 11, 30, 0);
     sweepCC(d, 2, 30, 0);
-    expect(d.resolved).toEqual({ kind: 'cc', controller: 2 });
+    expect(d.resolved).toEqual({ kind: 'cc', controller: 11 });
   });
 
   it('does not resolve on evidence spread beyond the window', () => {
@@ -890,9 +907,6 @@ const MIN_UPDATES = 20;
 const MIN_DISTINCT = 8;
 const MIN_RANGE = 32;
 
-/** CC2 is the MIDI standard's Breath Controller. It gets a prior, not a guarantee. */
-const PRIOR_KEY = 'cc:2';
-
 interface Sample {
   t: number;
   value: number;
@@ -903,8 +917,13 @@ interface Sample {
  *
  * Scores every candidate — each CC number seen, plus channel pressure — over a
  * rolling window. Breath streams continuously across a wide range; a mod wheel
- * or a switch does not. Locks on the first candidate clearing all thresholds,
- * and stays locked for the session so the display cannot flap mid-phrase.
+ * or a switch does not. Evidence alone decides: the first candidate whose
+ * evidence clears every threshold locks the source, evaluated eagerly as each
+ * message is observed. No candidate — not even CC2, the MIDI standard's
+ * Breath Controller — gets a prior; the EMEO's actual encoding is
+ * unconfirmed, so ties are broken purely by whichever control has the most
+ * updates in the window at the moment of evaluation. Once a source locks it
+ * stays locked for the session so the display cannot flap mid-phrase.
  */
 export class BreathDetector {
   private samples = new Map<string, Sample[]>();
@@ -916,10 +935,11 @@ export class BreathDetector {
 
   observe(msg: MidiMessage): void {
     const key = keyOf(msg);
-    if (key === null) return;
+    const value = breathValue(msg);
+    if (key === null || value === null) return;
 
     const list = this.samples.get(key) ?? [];
-    list.push({ t: msg.t, value: msg.value });
+    list.push({ t: msg.t, value });
     const cutoff = msg.t - WINDOW_MS;
     while (list.length > 0 && list[0].t < cutoff) list.shift();
     this.samples.set(key, list);
@@ -931,7 +951,7 @@ export class BreathDetector {
     if (this.locked === null) return null;
     const key = keyOf(msg);
     if (key === null || key !== keyOfId(this.locked)) return null;
-    return (msg as { value: number }).value;
+    return breathValue(msg);
   }
 
   scoreboard(): ScoreRow[] {
@@ -946,22 +966,26 @@ export class BreathDetector {
   }
 
   private tryLock(): void {
-    const qualifying = [...this.samples.entries()].filter(([, list]) => {
+    // At most one candidate can qualify here: observe() records one candidate
+    // per message and locks the instant anything qualifies, so no second
+    // candidate ever gets to cross the thresholds in the same call.
+    const winner = [...this.samples.entries()].find(([, list]) => {
       const s = stats(list);
       return s.updates >= MIN_UPDATES && s.distinct >= MIN_DISTINCT && s.range >= MIN_RANGE;
     });
-    if (qualifying.length === 0) return;
-
-    const prior = qualifying.find(([key]) => key === PRIOR_KEY);
-    const winner =
-      prior ?? qualifying.sort((a, b) => stats(b[1]).updates - stats(a[1]).updates)[0];
-    this.locked = idOfKey(winner[0]);
+    if (winner) this.locked = idOfKey(winner[0]);
   }
 }
 
 function keyOf(msg: MidiMessage): string | null {
   if (msg.type === 'cc') return `cc:${msg.controller}`;
   if (msg.type === 'channel-pressure') return 'pressure';
+  return null;
+}
+
+/** Only `cc` and `channel-pressure` messages carry a breath value. */
+function breathValue(msg: MidiMessage): number | null {
+  if (msg.type === 'cc' || msg.type === 'channel-pressure') return msg.value;
   return null;
 }
 
@@ -1586,6 +1610,10 @@ describe('synthetic EMEO', () => {
 
     expect(count).toBe(settled);
   });
+
+  it('refuses to start against a non-synthetic environment', () => {
+    expect(() => startSynthetic({ isSecureContext: true })).toThrow(TypeError);
+  });
 });
 ```
 
@@ -1642,9 +1670,18 @@ export function createSyntheticEnvironment(options: SyntheticOptions = {}): Midi
   return env;
 }
 
+function isSynthetic(env: MidiEnvironment): env is SyntheticEnvironment {
+  return '__input' in env && '__options' in env;
+}
+
 /** Begins emitting a scripted performance. Returns a stop function. */
 export function startSynthetic(env: MidiEnvironment): () => void {
-  const { __input: input, __options: options } = env as SyntheticEnvironment;
+  // A guard, not a cast: passing the real browser environment here is a
+  // programming error and should say so rather than fail as `undefined`.
+  if (!isSynthetic(env)) {
+    throw new TypeError('startSynthetic requires an environment from createSyntheticEnvironment');
+  }
+  const { __input: input, __options: options } = env;
 
   let elapsed = 0;
   let noteIndex = 0;
@@ -1686,7 +1723,7 @@ export function startSynthetic(env: MidiEnvironment): () => void {
 - [ ] **Step 4: Run it to verify it passes**
 
 Run: `npx vitest run src/dev/syntheticEmeo.test.ts`
-Expected: PASS — 5 tests.
+Expected: PASS — 6 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -2099,6 +2136,7 @@ Expected: PASS — 3 tests.
 Create `src/ui/Header/Header.test.tsx`:
 
 ```tsx
+import type { ComponentProps } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '../../i18n';
@@ -2106,7 +2144,9 @@ import { Header } from './Header';
 
 const noop = () => {};
 
-function renderHeader(props: Partial<React.ComponentProps<typeof Header>> = {}) {
+// `ComponentProps` is imported as a type: under the modern JSX transform there
+// is no `React` binding in scope, and TypeScript rejects the UMD global here.
+function renderHeader(props: Partial<ComponentProps<typeof Header>> = {}) {
   return render(
     <Header
       state={{ status: 'idle' }}

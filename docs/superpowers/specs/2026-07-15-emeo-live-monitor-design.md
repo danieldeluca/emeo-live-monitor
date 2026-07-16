@@ -284,9 +284,9 @@ design tokens.
 
 ## 8. Breath source detection (FR-14)
 
-**CC2 is not hard-coded.** The MIDI standard assigns CC2 to Breath Controller, but wind controllers
-variously use CC2, CC11 (Expression), or channel pressure — which is not a control change at all.
-Assuming wrongly yields a dead breath curve with no diagnosis.
+**CC2 is not hard-coded, and carries no special weight.** The MIDI standard assigns CC2 to Breath
+Controller, but wind controllers variously use CC2, CC11 (Expression), or channel pressure — which is
+not a control change at all. Assuming wrongly yields a dead breath curve with no diagnosis.
 
 `breathSource.ts` subscribes to the raw stream and scores every candidate — each CC number observed,
 plus channel pressure — over a rolling 3-second window:
@@ -297,9 +297,19 @@ plus channel pressure — over a rolling 3-second window:
 | Distinct values | Breath sweeps many values; a switch sends two. |
 | Range covered | Breath spans most of 0–127. |
 
-A candidate locks in on clearing all three thresholds: **≥20 updates, ≥8 distinct values, range ≥32,
-within the window.** CC2 receives a prior, not a guarantee: if CC2 qualifies it wins ties
-immediately; if it never moves, the evidence decides.
+**The first candidate to clear all three thresholds wins** — ≥20 updates, ≥8 distinct values, range
+≥32, within the window — and stays locked for the session. Evidence alone decides; CC2 gets no
+preference.
+
+> **Revised during implementation (15 July 2026).** This originally read: *"CC2 receives a prior, not
+> a guarantee: if CC2 qualifies it wins ties immediately."* That rule proved unimplementable.
+> Detection evaluates once per incoming message, and two controls can never cross the thresholds on
+> the *same* message — so whichever crosses first always wins and the tie-break was unreachable code.
+> A prior would require deferring the decision behind a settle window, adding a state machine for
+> negligible benefit: any control that clears these thresholds while someone is playing a wind
+> instrument *is* the breath, and if an instrument mirrors breath onto two controls, both carry
+> identical data and either yields a correct curve. The only cost is that such an instrument might be
+> reported to the console as CC11 rather than CC2, very slightly muddying §12.1's documentation goal.
 
 Until a source locks, the UI reads *"Blow into the EMEO to detect the breath control"* and the
 console prints the candidate scoreboard. The lock holds for the session. `resetBreathDetection()` is
@@ -365,18 +375,42 @@ guessed the EMEO correctly.
 
 ## 12. Assumptions to verify against real hardware
 
-1. **Which control carries breath.** Unknown (§187). Detection handles this at runtime; the console
-   session confirms it.
-2. **Octave numbering.** This design uses scientific pitch notation: MIDI 60 = C4 = middle C. Yamaha's
-   convention names that C3. If the player's sheet music uses the other, every octave number is off
-   by one.
-3. **Transposition.** A saxophone is a transposing instrument; on an alto, a written C sounds concert
-   E♭. Whether the EMEO transmits written or concert pitch is unknown. **v1 displays exactly what the
-   EMEO sends.** This matters greatly for the §196 sight-reading trainer and is cheap to record now.
-4. **Breath resolution.** Whether the EMEO uses the full 0–127 range is unconfirmed. The readout shows
-   the raw value against 127 rather than a rescaled percentage, so the truth is visible.
-5. **Bite / additional expression data.** §187 raises the possibility. Any unrecognised messages flow
-   through as `raw` events and appear in the console log; nothing is silently discarded.
+> **First hardware session — 16 July 2026.** A real EMEO was connected over USB and its raw MIDI
+> captured via the `?debug` console. Findings are recorded inline below. Items 1, 4, and 5 were
+> confirmed in the first capture; a **second capture the same day** (a known **written C-major
+> scale**) closed item 3 (transposition) and informed item 2 (octave). **All five are now resolved.**
+
+1. **Which control carries breath.** **CONFIRMED.** The EMEO transmits breath on **three controllers
+   at once, with identical values**: CC2 (Breath Controller), CC11 (Expression), and CC7 (Volume),
+   emitted in that order every frame. Runtime detection locks **CC2** — each frame sends it first, so
+   it crosses the thresholds a message ahead of the other two. This vindicates both runtime detection
+   (a CC2-only hard-code would have been right by luck) and the removal of the CC2 prior in §8 (the
+   three are byte-identical, so the choice is immaterial to the curve). Future tools may read any of
+   the three; they carry the same data.
+2. **Octave numbering.** **Informed; one detail to confirm.** This design uses scientific pitch
+   notation: MIDI 60 = C4 = middle C. The written C-major scale in the second capture landed at MIDI
+   48–59 — displayed **C3–B3**, the octave below middle C. Most MIDI wind controllers map written
+   middle C to MIDI 60, so a "written C" scale would be expected around C4–B4; landing an octave lower
+   suggests either the scale was fingered in the low register, or the EMEO's MIDI-out sits one octave
+   below the written staff. This is a display-label convention, not a hardware correctness issue — the
+   app renders received MIDI numbers faithfully and v1 needs no change — but the §196 sight-reading
+   trainer should confirm the mapping (finger written middle C, note the number) before drawing a staff.
+3. **Transposition.** **CONFIRMED: none — the EMEO transmits written (fingered) pitch.** The
+   instrument was **configured as a B♭ tenor**, which makes this a genuine transposition test: on a B♭
+   tenor a written C-major scale *sounds* concert B♭ major (B♭ C D E♭ F G A — with flats). The capture
+   was a known **written** C-major scale and it displayed as **C-major naturals** (C D E F G A B, no
+   accidentals) — the written notes, not the concert-sounding ones. So the EMEO does **not** apply its
+   B♭-tenor transposition to the MIDI it sends; it emits the fingered note as-is. **v1 already displays
+   exactly this**, so no change is needed. Implications for the future §196 sight-reading trainer: it
+   can treat incoming MIDI as written pitch directly (ideal — it matches the printed part the player
+   reads); a concert-pitch playalong mode, if ever wanted, would transpose display down a major second.
+4. **Breath resolution.** **CONFIRMED: full 0–127.** The captured stream sweeps cleanly from 0 to 127
+   and back on all three breath controllers, so the "of 127" readout reflects the instrument's true
+   range rather than a rescaled percentage.
+5. **Bite / additional expression data.** **CONFIRMED: none beyond the triple-mirrored breath.** The
+   session showed only note on/off (with meaningful attack velocity, e.g. vel 6 soft to vel 127 hard),
+   plus CC2/CC11/CC7. No channel pressure, no pitch bend, no bite CC, no other controllers. Nothing is
+   hidden; the `raw` event path would have surfaced anything unrecognised.
 
 ---
 
@@ -387,7 +421,8 @@ device configuration, no mobile-first requirement.
 
 Additionally out of scope by this design: no session recording or export, no persistence of any kind
 (including `localStorage`), and no musical staff view. The note lane conveys pitch position; a staff
-would raise the transposition question in §12.3 before we have the evidence to answer it.
+is a larger feature deferred to a later tool. (The transposition question a staff would raise is now
+answered — §12.3: the EMEO sends written pitch — so the deferral is about scope, not missing evidence.)
 
 ---
 
@@ -398,3 +433,71 @@ Business spec §166–177 applies unchanged, with two amendments arising from §
 - "The raw monitor shows readable incoming messages" is met by the **console logger** with the debug
   flag enabled.
 - "Notation can be switched between standard and solfège" is met by **both being shown at once**.
+
+---
+
+## 15. v1.1 — Multiple breath controllers
+
+The first hardware session (§12.1) found the EMEO transmits breath on **three controllers at once with
+identical values**: CC2 (Breath), CC11 (Expression), CC7 (Volume). v1 tracks and draws only the primary
+(CC2). This increment shows the others **only when they carry different information** — i.e. when they
+diverge — so the common case (identical) stays a single clean green curve.
+
+### 15.1 Behaviour
+
+- **The detector tracks the whole breath *family*, not one source.** Every controller that clears the
+  §8 thresholds joins the tracked set; the first to lock stays the **primary** and continues to drive
+  the meter, the note-history alignment, the detection signal, and the collapsed numeric readout —
+  unchanged from v1. The others are additional buffered series.
+- **Each tracked controller gets its own ring buffer.** The breath event now carries a `source`, so App
+  routes each sample to the correct ring.
+- **Divergence is judged frame-by-frame.** The three CCs share the same MIDI `timeStamp` each frame, so
+  samples are grouped by timestamp and a frame *diverges* when its max−min value exceeds
+  `DIVERGENCE_TOLERANCE = 2` (ignores ≤2-LSB jitter; catches a genuinely shaped Expression/Volume).
+- **Split display follows the scrolling window (the user's "live" choice, made coherent for a history
+  graph).** The lane splits into colour-coded curves whenever a divergence is visible *anywhere in the
+  ~15s window* — computed in O(1) as `now − lastDivergenceT ≤ visibleWindowMs`. It collapses back to the
+  single green curve only once the last divergence has scrolled off the bottom, so the graph never
+  erases visible history and never strobes.
+- **Labels are `Breath (CC2)` style** — friendly name (translatable) plus the raw CC number, per the
+  user's choice. Unknown controllers fall back to `CC14`. When split, the numeric readout becomes a
+  short stack of these labels, one per series.
+
+### 15.2 Palette (validated, dark surface `#0e1117`)
+
+Colours are assigned to series in fixed order, never cycled. Chosen to avoid the app's existing colour
+semantics — **blue `#4ea3ff` means notes, red `#ff5c5c` is the now-line** — so breath series use green
+and warm/violet hues only.
+
+| Series | Controller | Colour | Note |
+|---|---|---|---|
+| 1 (primary) | Breath (CC2) | `#34d399` green | existing breath colour, unchanged |
+| 2 | Expression (CC11) | `#eda100` amber | new token |
+| 3 | Volume (CC7) | `#9085e9` violet | new token |
+
+Validated with the dataviz skill's script against `#0e1117`: worst-adjacent CVD ΔE **12.5** (target ≥8),
+normal-vision ΔE **21.9** (floor ≥15), contrast **all ≥3:1**. The script's lightness-band check FAILs
+because the app deliberately runs bright neon marks on a *darker* surface than the reference's `#1a1a19`
+(and the primary green is fixed app identity) — on `#0e1117` "too light" aids rather than harms
+legibility, which the passing contrast confirms. Identity is never colour-alone: every series also
+carries its text label (the skill's secondary-encoding relief). Per the user's explicit instruction the
+value labels are themselves coloured to match their curves (this overrides the skill's default of
+text-in-ink-plus-a-coloured-mark).
+
+### 15.3 Rendering
+
+When collapsed, the breath lane draws exactly as v1: one filled green curve. When split, each series is a
+2px coloured stroke (no fill — overlapping translucent fills would muddy), so the shapes stay legible
+where they cross. The meter continues to show the primary only.
+
+### 15.4 Demo & test support
+
+The synthetic EMEO is extended to emit CC2/CC11/CC7 with **identical** values by default — matching the
+real instrument — with an option to make Expression/Volume diverge, so the split view can be exercised in
+tests, in CI, and as a `?diverge` demo without hardware.
+
+### 15.5 Still one instrument, still no assumption baked in
+
+If a future EMEO or mode makes the controllers carry genuinely different meaning (e.g. Expression a
+shaped curve, Volume a master level), this display already surfaces it and separate *interpretation* can
+follow — driven by observed divergence, not assumed now.

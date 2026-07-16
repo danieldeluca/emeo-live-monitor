@@ -1,0 +1,59 @@
+.readout {
+  position: absolute;
+  top: var(--space-1);
+  left: var(--space-1);
+  z-index: 2;
+  font-family: var(--font-ui);
+  pointer-events: none;
+}
+
+.value {
+  font-weight: 800;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--color-breath);
+  font-variant-numeric: tabular-nums;
+}
+
+.max {
+  font-size: 0.6rem;
+  color: var(--color-text-muted);
+}
+
+.detecting {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  max-width: 120px;
+}
+
+.splitList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.splitRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dot {
+  font-size: 0.6rem;
+}
+
+.splitLabel {
+  flex: 1;
+}
+
+.splitValue {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}

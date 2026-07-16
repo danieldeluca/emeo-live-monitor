@@ -1,0 +1,35 @@
+{
+  "app": { "title": "EMEO Live Monitor" },
+  "connection": {
+    "connect": "Connecter",
+    "disconnect": "Déconnecter",
+    "idle": "Non connecté",
+    "requesting": "Connexion…",
+    "choosing": "Choisissez votre instrument",
+    "connected": "Connecté à {{name}}",
+    "lost": "Connexion perdue — {{name}}",
+    "reconnect": "Reconnecter",
+    "hint": "Branchez votre EMEO par câble, puis cliquez sur Connecter."
+  },
+  "errors": {
+    "insecureContext": "Cette page doit être servie en HTTPS (ou exécutée sur localhost) pour que votre navigateur autorise l'accès aux instruments de musique.",
+    "noWebMidi": "Ce navigateur ne peut pas se connecter aux instruments de musique. Essayez un navigateur compatible Web MIDI.",
+    "permissionDenied": "L'accès à votre instrument a été refusé. Cliquez sur Connecter et autorisez l'accès lorsque votre navigateur le demande.",
+    "noPorts": "Aucun instrument détecté. Une connexion par câble est la plus fiable. En Bluetooth, appairez d'abord l'EMEO dans votre système d'exploitation — les navigateurs ne peuvent pas l'appairer.",
+    "unknown": "Une erreur est survenue lors de la connexion à votre instrument."
+  },
+  "breath": {
+    "label": "Souffle",
+    "outOf": "sur {{max}}",
+    "detecting": "Soufflez dans l'EMEO pour détecter le contrôle de souffle"
+  },
+  "notes": { "label": "Note", "now": "Maintenant" },
+  "controls": { "pause": "Pause", "resume": "Reprendre", "clear": "Effacer" },
+  "controllers": {
+    "breath": "Souffle",
+    "expression": "Expression",
+    "volume": "Volume",
+    "modulation": "Modulation",
+    "pressure": "Pression"
+  }
+}

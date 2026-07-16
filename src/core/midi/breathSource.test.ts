@@ -190,4 +190,49 @@ describe('BreathDetector', () => {
       { kind: 'cc', controller: 7 },
     ]);
   });
+
+  it('keeps resolved as the first qualifier, unchanged after a third controller qualifies', () => {
+    const d = new BreathDetector();
+    sweepCC(d, 2);
+    expect(d.resolved).toEqual({ kind: 'cc', controller: 2 });
+    sweepCC(d, 11, 30, 1000);
+    sweepCC(d, 7, 30, 2000);
+    expect(d.resolved).toEqual({ kind: 'cc', controller: 2 });
+  });
+
+  it('tracks the real EMEO pattern: CC2, CC11, CC7 interleaved on a shared timestamp each frame', () => {
+    const d = new BreathDetector();
+    const count = 30;
+    // Every frame sends all three controllers back-to-back at the same `t`,
+    // mirroring one breath value onto CC2, CC11, and CC7 at once — the
+    // actual wire behaviour, not three independent sequential sweeps.
+    for (let i = 0; i < count; i++) {
+      const t = i * 10;
+      const value = Math.round((i / (count - 1)) * 127);
+      d.observe({ type: 'cc', channel: 0, controller: 2, value, t });
+      d.observe({ type: 'cc', channel: 0, controller: 11, value, t });
+      d.observe({ type: 'cc', channel: 0, controller: 7, value, t });
+    }
+
+    // CC2 is observed first once the shared frame crosses the thresholds,
+    // so it becomes primary even though all three qualify together.
+    expect(d.resolved).toEqual({ kind: 'cc', controller: 2 });
+    expect(d.sources()).toEqual([
+      { kind: 'cc', controller: 2 },
+      { kind: 'cc', controller: 11 },
+      { kind: 'cc', controller: 7 },
+    ]);
+
+    expect(d.breathValueOf({ type: 'cc', channel: 0, controller: 2, value: 50, t: 300 })).toEqual({
+      source: { kind: 'cc', controller: 2 },
+      value: 50,
+    });
+    expect(d.breathValueOf({ type: 'cc', channel: 0, controller: 11, value: 60, t: 300 })).toEqual(
+      { source: { kind: 'cc', controller: 11 }, value: 60 }
+    );
+    expect(d.breathValueOf({ type: 'cc', channel: 0, controller: 7, value: 70, t: 300 })).toEqual({
+      source: { kind: 'cc', controller: 7 },
+      value: 70,
+    });
+  });
 });

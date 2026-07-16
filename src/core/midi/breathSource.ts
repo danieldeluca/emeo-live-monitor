@@ -99,6 +99,13 @@ export class BreathDetector {
   }
 
   private tryQualify(key: string, list: Sample[]): void {
+    // Already-qualified keys skip scoring entirely: their qualification (and
+    // primary-lock status) can never change, so re-running stats() — which
+    // allocates a Set and rescans the whole window — on every message
+    // forever would be pure waste. Keys that have not qualified yet keep
+    // paying that cost on every message, including ones that never will
+    // (e.g. a mod wheel): they still need watching in case they start
+    // behaving like breath later.
     if (this.qualified.includes(key)) return;
     const s = stats(list);
     if (s.updates >= MIN_UPDATES && s.distinct >= MIN_DISTINCT && s.range >= MIN_RANGE) {

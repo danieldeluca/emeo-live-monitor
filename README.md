@@ -115,6 +115,19 @@ With `?debug` on, every incoming MIDI message is logged and the detected breath 
 
 ---
 
+## Breath detail: one curve, or three
+
+The EMEO reports breath on three MIDI controllers at once — **Breath (CC2)**, **Expression (CC11)**, and
+**Volume (CC7)**. When they carry the *same* value (as the current hardware does), the monitor draws a
+single green curve. If they ever *diverge*, the lane automatically splits into three colour-matched curves
+— so you can see each one — and merges back when they realign; the value readout splits in lockstep.
+
+![The breath lane split into three colour-matched curves — green Breath (CC2), amber Expression (CC11), and violet Volume (CC7) — with a matching stacked value readout in the top-left corner.](docs/split-view.png)
+
+*Reproduce it yourself with **http://localhost:5173/?synthetic&diverge** — no hardware needed.*
+
+---
+
 ## Scripts
 
 | Command | What it does |

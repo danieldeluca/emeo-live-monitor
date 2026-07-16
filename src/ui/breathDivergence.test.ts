@@ -84,6 +84,38 @@ describe('createDivergenceTracker', () => {
     tracker.observe('cc2', 64, 30);
     expect(tracker.lastDivergenceT).toBe(-Infinity);
   });
+
+  it('pins lastDivergenceT to the diverging frame and does not overwrite when controllers re-agree', () => {
+    // Real-world pattern: breath diverges, then controllers re-agree. The split
+    // view must stay until the divergence scrolls off the window (design §15.1).
+    const tracker = createDivergenceTracker(2);
+
+    // Frame t=0: all three controllers in agreement (spread 0)
+    tracker.observe('cc2', 64, 0);
+    tracker.observe('cc11', 64, 0);
+    tracker.observe('cc7', 64, 0);
+
+    // Frame t=10: diverges (spread 6 > tolerance 2)
+    tracker.observe('cc2', 64, 10);
+    tracker.observe('cc11', 70, 10);
+    tracker.observe('cc7', 64, 10);
+
+    // Frame t=20: controllers re-agree (spread 0) — frame is not yet evaluated
+    tracker.observe('cc2', 64, 20);
+    tracker.observe('cc11', 64, 20);
+    tracker.observe('cc7', 64, 20);
+
+    // Close frame t=20 by starting frame t=30
+    tracker.observe('cc2', 64, 30);
+
+    // Divergence stays pinned to t=10, not overwritten by the later in-tolerance frame
+    expect(tracker.lastDivergenceT).toBe(10);
+
+    // Verify split view collapse behavior: stays visible within window, collapses after
+    const windowMs = 15000;
+    expect(isSplit(3000, tracker.lastDivergenceT, windowMs)).toBe(true); // within window
+    expect(isSplit(20000, tracker.lastDivergenceT, windowMs)).toBe(false); // scrolled off
+  });
 });
 
 describe('isSplit', () => {

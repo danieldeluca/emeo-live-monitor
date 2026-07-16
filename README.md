@@ -5,9 +5,9 @@ A browser app that connects to an **EMEO digital saxophone** over Web MIDI and s
 time axis. Notes fall like Guitar Hero; the breath curve scrolls beside them; each note's name rides
 alongside its block in both English (`A♯4`) and solfège (`La♯4`).
 
-![EMEO Live Monitor: blue note blocks fall on a shared downward time axis toward the red now-line, the green breath curve scrolls in the left lane with a live value readout, and the right column lists each note in both English and solfège notation.](docs/screenshot.png)
+![EMEO Live Monitor in motion: blue note blocks fall on a shared downward time axis toward the red now-line, the green breath curve scrolls in the left lane with a live value readout, and the right column lists each note in both English and solfège notation.](docs/demo.gif)
 
-*Shown in synthetic demo mode — no hardware required; live playing from a real EMEO looks identical.*
+*Live demo in synthetic mode — no hardware required; playing a real EMEO looks identical.*
 
 It runs entirely in the browser. There is **no backend, no account, and no data storage** — nothing you
 play leaves your machine.

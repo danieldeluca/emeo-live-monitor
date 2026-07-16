@@ -24,5 +24,12 @@
     "detecting": "Soufflez dans l'EMEO pour détecter le contrôle de souffle"
   },
   "notes": { "label": "Note", "now": "Maintenant" },
-  "controls": { "pause": "Pause", "resume": "Reprendre", "clear": "Effacer" }
+  "controls": { "pause": "Pause", "resume": "Reprendre", "clear": "Effacer" },
+  "controllers": {
+    "breath": "Souffle",
+    "expression": "Expression",
+    "volume": "Volume",
+    "modulation": "Modulation",
+    "pressure": "Pression"
+  }
 }

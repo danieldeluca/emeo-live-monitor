@@ -24,5 +24,12 @@
     "detecting": "Blow into the EMEO to detect the breath control"
   },
   "notes": { "label": "Note", "now": "Now" },
-  "controls": { "pause": "Pause", "resume": "Resume", "clear": "Clear" }
+  "controls": { "pause": "Pause", "resume": "Resume", "clear": "Clear" },
+  "controllers": {
+    "breath": "Breath",
+    "expression": "Expression",
+    "volume": "Volume",
+    "modulation": "Modulation",
+    "pressure": "Pressure"
+  }
 }

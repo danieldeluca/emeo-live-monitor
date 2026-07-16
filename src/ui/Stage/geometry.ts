@@ -16,6 +16,8 @@ export interface StageLayout {
 export interface StageTokens {
   note: string;
   breath: string;
+  expression: string;
+  volume: string;
   now: string;
   surface: string;
   track: string;
@@ -65,6 +67,8 @@ export function readTokens(el: HTMLElement): StageTokens {
   return {
     note: style.getPropertyValue('--color-note').trim(),
     breath: style.getPropertyValue('--color-breath').trim(),
+    expression: style.getPropertyValue('--color-expression').trim(),
+    volume: style.getPropertyValue('--color-volume').trim(),
     now: style.getPropertyValue('--color-now').trim(),
     surface: style.getPropertyValue('--color-bg').trim(),
     track: style.getPropertyValue('--color-surface').trim(),

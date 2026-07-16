@@ -10,10 +10,17 @@ export const BREATH_LANE_WIDTH = 44;
 /** Everything to the left of the note lane. */
 export const STAGE_GUTTER = METER_WIDTH + BREATH_LANE_WIDTH;
 
+/** One breath curve: its own ring buffer and the colour it draws in. */
+export interface BreathSeries {
+  ring: BreathRing;
+  color: string;
+}
+
 export function drawStage(
   ctx: CanvasRenderingContext2D,
   now: number,
-  ring: BreathRing,
+  series: BreathSeries[],
+  split: boolean,
   notes: NoteBlock[],
   g: StageGeometry,
   layout: StageLayout,
@@ -24,11 +31,16 @@ export function drawStage(
   ctx.fillStyle = tokens.surface;
   ctx.fillRect(0, 0, totalWidth, g.height);
 
-  drawMeter(ctx, ring, g, tokens);
+  drawMeter(ctx, series[0].ring, g, tokens);
 
   ctx.save();
   ctx.translate(METER_WIDTH, 0);
-  drawBreath(ctx, now, ring, g, tokens);
+  if (split) {
+    // Primary first so later (top) series paint over it where curves cross.
+    for (const s of series) drawBreathStroke(ctx, now, s.ring, g, s.color);
+  } else {
+    drawBreathFilled(ctx, now, series[0].ring, g, series[0].color);
+  }
   ctx.restore();
 
   ctx.save();
@@ -57,13 +69,13 @@ function drawMeter(
   ctx.fillRect(0, g.height - h, METER_WIDTH, h);
 }
 
-function drawBreath(
+/** Walks one ring's visible samples into the current path. True if any were plotted. */
+function buildBreathPath(
   ctx: CanvasRenderingContext2D,
   now: number,
   ring: BreathRing,
   g: StageGeometry,
-  tokens: StageTokens,
-): void {
+): boolean {
   const tMin = now - visibleWindowMs(g);
   ctx.beginPath();
   ctx.moveTo(0, nowLineY(g));
@@ -72,15 +84,40 @@ function drawBreath(
     ctx.lineTo(breathToX(value, BREATH_LANE_WIDTH), timeToY(t, now, g));
     any = true;
   });
-  if (!any) return;
+  return any;
+}
+
+/** Collapsed view (today's look, unchanged): filled translucent area + thin stroke. */
+function drawBreathFilled(
+  ctx: CanvasRenderingContext2D,
+  now: number,
+  ring: BreathRing,
+  g: StageGeometry,
+  color: string,
+): void {
+  if (!buildBreathPath(ctx, now, ring, g)) return;
   ctx.lineTo(0, g.height);
   ctx.closePath();
-  ctx.fillStyle = tokens.breath;
+  ctx.fillStyle = color;
   ctx.globalAlpha = 0.3;
   ctx.fill();
   ctx.globalAlpha = 1;
-  ctx.strokeStyle = tokens.breath;
+  ctx.strokeStyle = color;
   ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+/** Split view: coloured stroke only, no fill, so overlapping series stay legible. */
+function drawBreathStroke(
+  ctx: CanvasRenderingContext2D,
+  now: number,
+  ring: BreathRing,
+  g: StageGeometry,
+  color: string,
+): void {
+  if (!buildBreathPath(ctx, now, ring, g)) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
   ctx.stroke();
 }
 

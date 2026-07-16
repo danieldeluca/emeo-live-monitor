@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { BreathRing } from '../../core/model/ringBuffer';
-import { STAGE_GUTTER, drawStage } from './draw';
+import { STAGE_GUTTER, drawStage, type BreathSeries } from './draw';
 import { shouldDrawFrame } from './frameGate';
 import { readTokens, type NoteBlock } from './geometry';
 import { DEFAULT_GEOMETRY } from './timeToY';
@@ -36,6 +36,9 @@ export function Stage({ ring, notes, paused, contentToken }: StageProps) {
     if (!ctx) return;
 
     const tokens = readTokens(canvas);
+    // Single-element series: today's behaviour is always the collapsed (non-split)
+    // primary-only curve. Task V7 wires the real multi-series list + split source.
+    const series: BreathSeries[] = [{ ring, color: tokens.breath }];
     let frame = 0;
     let lastDrawnToken = tokenRef.current;
 
@@ -59,7 +62,8 @@ export function Stage({ ring, notes, paused, contentToken }: StageProps) {
       drawStage(
         ctx,
         performance.now(),
-        ring,
+        series,
+        false,
         notes,
         { height: rect.height, ...DEFAULT_GEOMETRY },
         { width: rect.width - STAGE_GUTTER, pitchMin: PITCH_MIN, pitchMax: PITCH_MAX },

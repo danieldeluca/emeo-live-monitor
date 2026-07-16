@@ -164,6 +164,27 @@ describe('App debug flag (F5)', () => {
 });
 
 describe('App breath divergence (Task V7, design §15)', () => {
+  // Stage is the sole owner of "are we split" (design §15.1, Task V7 fix):
+  // it derives the split window from the canvas's real height via
+  // visibleWindowMs. jsdom has no layout engine, so an unmocked canvas
+  // always reports getBoundingClientRect() = 0×0, which would make that
+  // window permanently 0 and Stage's split would never go true in these
+  // tests. Give it a small but genuine, non-zero size instead — 60px tall
+  // yields a real ~900ms window (visibleWindowMs's own formula: height ×
+  // (1 − nowLineFraction) / pxPerMs = 60 × 0.9 / 0.06), so these tests
+  // exercise the real shared mechanism rather than special-casing it away.
+  let rectSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    rectSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect')
+      .mockReturnValue(DOMRect.fromRect({ width: 300, height: 60 }));
+  });
+
+  afterEach(() => {
+    rectSpy.mockRestore();
+  });
+
   it('shows a single collapsed value and no split rows when the controllers agree (default synthetic)', async () => {
     render(<App environment={createSyntheticEnvironment()} synthetic />);
     await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
@@ -187,19 +208,18 @@ describe('App breath divergence (Task V7, design §15)', () => {
     expect(screen.queryByTestId('breath-value')).not.toBeInTheDocument();
   });
 
-  it('collapses the split readout back to a single value once the divergence scrolls off the ~15s window', async () => {
-    // The split/collapse decision (isSplit in breathDivergence.ts) is driven
-    // entirely by MIDI event timestamps (design §6: "never the time the
-    // handler ran"), never real wall-clock time. So rather than waiting 15
-    // real seconds (slow) or faking a clock the app doesn't actually read,
-    // this scripts event timestamps directly against a hand-built fake
-    // input — the same technique the F1c test above already uses. It
-    // exercises the exact production call App makes,
-    // isSplit(event.t, tracker.lastDivergenceT, READOUT_WINDOW_MS), just
-    // compressed onto a short real-time test run. What this does NOT cover:
-    // Stage's canvas redraw of the collapse, which jsdom cannot render or
-    // assert on regardless of timing strategy (see the manual-verification
-    // report for that half).
+  it("collapses the split readout back to a single value once the divergence scrolls off the graph's visible window", async () => {
+    // Task V7 fix: the readout no longer judges "still split" against its
+    // own fixed constant — it just reads Stage's splitRef, and Stage's split
+    // is real: `now` is a real performance.now() read inside its rAF loop,
+    // compared against real event timestamps (design §6 — MIDI timestamps
+    // share the performance.now() epoch). So proving the collapse now means
+    // letting real wall-clock time actually pass the (mocked-small, see
+    // `beforeEach` above) window, rather than scripting a fixed-offset jump
+    // the way the old READOUT_WINDOW_MS-based version of this test did.
+    // Event *timestamps* are still hand-scripted (same fake-input technique
+    // as the F1c test above) so qualification/divergence stay deterministic;
+    // only the collapse itself is driven by a real, awaited delay.
     const input = fakeInput('emeo', 'EMEO');
     const access: MidiAccessLike = { inputs: new Map([[input.id, input]]), onstatechange: null };
     const env = { isSecureContext: true, requestMIDIAccess: async () => access };
@@ -208,49 +228,88 @@ describe('App breath divergence (Task V7, design §15)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
     await screen.findByText('Connected to EMEO');
 
-    const send = (t: number, controller: number, value: number) => {
+    // Anchored to real performance.now(), like the real MIDI timestamps and
+    // the synthetic instrument (see syntheticEmeo.ts) both are — Stage reads
+    // real performance.now() as "now", so its split decision only makes
+    // sense measured against the same clock.
+    const origin = performance.now();
+    const send = (offsetMs: number, controller: number, value: number) => {
       act(() => {
-        input.onmidimessage!({ data: new Uint8Array([0xb0, controller, value]), timeStamp: t });
+        input.onmidimessage!({
+          data: new Uint8Array([0xb0, controller, value]),
+          timeStamp: origin + offsetMs,
+        });
       });
     };
 
     // Qualify CC2/CC11/CC7 as breath sources (design §8: >=20 updates, >=8
     // distinct values, range >=32, inside a rolling 3s window) with an
     // identical sweep across all three, matching the real instrument's habit
-    // of mirroring breath onto all three at once.
-    let t = 0;
+    // of mirroring breath onto all three at once. 10ms steps (as the real
+    // instrument uses) also matter here for a second reason: the readout is
+    // itself throttled to ~83ms (READOUT_HZ) in event-time, so steps need to
+    // be spaced widely enough to actually cross that throttle more than
+    // once — 1ms steps would let only the very first published sample ever
+    // update the readout. The whole sequence's ~350ms synthetic-offset span
+    // is still tiny next to the real ~900ms window being tested below.
+    let offset = 0;
     for (let i = 0; i < 25; i++) {
       const value = 10 + i * 4; // 25 distinct values, range 96
-      send(t, 2, value);
-      send(t, 11, value);
-      send(t, 7, value);
-      t += 10;
+      send(offset, 2, value);
+      send(offset, 11, value);
+      send(offset, 7, value);
+      offset += 10;
     }
 
     // One diverging frame: spread 80 > tolerance 2.
-    send(t, 2, 64);
-    send(t, 11, 20);
-    send(t, 7, 100);
-    const divergedAt = t;
+    send(offset, 2, 64);
+    send(offset, 11, 20);
+    send(offset, 7, 100);
+    offset += 10;
 
     // A frame is only evaluated once the *next* frame's first sample
     // arrives (design §15.1) — send a run of identical follow-up frames,
     // which also gives the throttled readout room to catch up to split.
     for (let i = 0; i < 10; i++) {
-      t += 10;
-      send(t, 2, 64);
-      send(t, 11, 64);
-      send(t, 7, 64);
+      send(offset, 2, 64);
+      send(offset, 11, 64);
+      send(offset, 7, 64);
+      offset += 10;
     }
+
+    // Everything above ran synchronously, in one burst, with no yield to the
+    // event loop — so Stage's rAF loop (a real requestAnimationFrame, distinct
+    // from this synchronous script) has not had a chance to run even once yet,
+    // and its splitRef is still at its initial `false`. Yield briefly so it
+    // does, picking up the now-diverged divergenceRef.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    // The readout only recomputes inside the breath-event handler (design
+    // §15.1) — it does not poll splitRef on its own — so one more sample is
+    // needed now that Stage has actually caught up, to make the readout
+    // observe the split it already has.
+    offset += 500;
+    send(offset, 2, 64);
+    send(offset, 11, 64);
+    send(offset, 7, 64);
 
     expect(await screen.findByText('Expression (CC11)')).toBeInTheDocument();
 
-    // Jump the instrument's clock past the ~15s window measured from the
-    // last divergence, still sending identical (non-diverging) values.
-    t = divergedAt + 15_000 + 100;
-    send(t, 2, 64);
-    send(t, 11, 64);
-    send(t, 7, 64);
+    // Let real time actually pass Stage's real (mocked-small, ~900ms)
+    // visible window with no further divergence — this is what makes
+    // Stage's own splitRef go false, honestly, rather than a scripted jump.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1300));
+    });
+
+    // A final non-diverging sample lets the throttled readout catch up to
+    // Stage's now-collapsed split state (the readout only updates inside the
+    // breath-event handler, per design §15.1).
+    send(offset + 10_000, 2, 64);
+    send(offset + 10_000, 11, 64);
+    send(offset + 10_000, 7, 64);
 
     expect(screen.queryByText('Expression (CC11)')).not.toBeInTheDocument();
     expect(screen.getByTestId('breath-value')).toBeInTheDocument();

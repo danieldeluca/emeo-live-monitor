@@ -6,7 +6,7 @@ import { createEmeoConnection, type ConnectionState } from '../core/midi/connect
 import { BreathRing } from '../core/model/ringBuffer';
 import { attachConsoleLogger, isDebugEnabled } from '../debug/consoleLogger';
 import { startSynthetic } from '../dev/syntheticEmeo';
-import { createDivergenceTracker, isSplit } from './breathDivergence';
+import { createDivergenceTracker } from './breathDivergence';
 import { controllerLabel, seriesColorVar } from './controllerIdentity';
 import { Header } from './Header/Header';
 import { History } from './History/History';
@@ -42,13 +42,6 @@ const NOTE_HISTORY_MS = 60_000;
 const MAX_NOTES = 2000;
 /** Design §15.1: a frame diverges when its max−min value exceeds this. */
 const DIVERGENCE_TOLERANCE = 2;
-/**
- * The readout's own nominal window for judging "is a divergence still
- * visible", since the readout can't know the canvas height (unlike Stage,
- * which uses its exact `visibleWindowMs`). Matches the graph's ~15s window
- * from design §6 closely enough that the boundary difference is imperceptible.
- */
-const READOUT_WINDOW_MS = 15_000;
 
 /** Stable key for a breath source, e.g. `cc:2` / `pressure` (design §15.1). */
 function keyForSource(id: BreathSourceId): string {
@@ -70,6 +63,12 @@ export function App({ environment, synthetic = false }: AppProps) {
   // Mirrors tracker.lastDivergenceT. Read by Stage every frame, never through
   // React state (design §15.1).
   const divergenceRef = useRef(-Infinity);
+  // Stage owns the split decision — it has the real visible window (canvas
+  // height), which the readout cannot know. Written by Stage every frame it
+  // actually draws, read here in the throttled readout update below. A ref,
+  // not state: this must never trigger a React render on its own (design
+  // §15.1).
+  const splitRef = useRef(false);
 
   const [state, setState] = useState<ConnectionState>(connection.state);
   const [paused, setPaused] = useState(false);
@@ -137,11 +136,10 @@ export function App({ environment, synthetic = false }: AppProps) {
           // F4: the readout freezes with the picture while paused (§7.5).
           // The ring buffers above still receive every sample regardless.
           if (!pausedRef.current) {
-            // The readout can't know the canvas height (unlike Stage, which
-            // uses its exact visibleWindowMs), so it judges the split window
-            // with a fixed nominal duration — an imperceptible boundary
-            // difference from the graph's.
-            const split = isSplit(event.t, tracker.lastDivergenceT, READOUT_WINDOW_MS);
+            // Stage computes this every frame from the real visible window
+            // (design §15.1) — the readout just follows it, so the two can
+            // never disagree about whether the controllers are "still split".
+            const split = splitRef.current;
             if (!split) {
               // Primary = series[0] (design §15.1): the first source ever to
               // qualify, which drives the meter/history/detection unchanged.
@@ -217,6 +215,7 @@ export function App({ environment, synthetic = false }: AppProps) {
         <Stage
           series={series}
           divergenceRef={divergenceRef}
+          splitRef={splitRef}
           notes={notes}
           paused={paused}
           contentToken={contentToken}

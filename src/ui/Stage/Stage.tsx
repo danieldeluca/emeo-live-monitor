@@ -34,6 +34,15 @@ interface StageProps {
    */
   divergenceRef: { readonly current: number };
   /**
+   * Stage is the sole owner of the split decision (design §15.1): it knows
+   * the real visible window from the canvas's actual height, which App does
+   * not. Written every frame Stage actually draws (see `shouldDrawFrame`);
+   * App's readout reads it in its own throttled update, never through React
+   * state, so the two never disagree about whether the controllers are
+   * "still split".
+   */
+  splitRef: { current: boolean };
+  /**
    * Stable array owned by App and mutated in place — never replaced. App does
    * not re-render on note events, so a new array identity would never
    * reach this component. Read every frame, never through React state.
@@ -59,7 +68,7 @@ function colorForIndex(index: number, tokens: StageTokens): string {
   return tokens.volume;
 }
 
-export function Stage({ series, divergenceRef, notes, paused, contentToken }: StageProps) {
+export function Stage({ series, divergenceRef, splitRef, notes, paused, contentToken }: StageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
@@ -69,8 +78,11 @@ export function Stage({ series, divergenceRef, notes, paused, contentToken }: St
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    // No `if (!ctx) return` here: a missing 2D context (e.g. jsdom in tests,
+    // which has no canvas backend) must not stop the frame loop below from
+    // running — it is the loop that computes and shares `split`, and that
+    // must happen whether or not there is anything to actually paint.
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
 
     const tokens = readTokens(canvas);
     let frame = 0;
@@ -87,11 +99,11 @@ export function Stage({ series, divergenceRef, notes, paused, contentToken }: St
 
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
-      if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+      if (ctx && (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr)) {
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
       }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const geometry = { height: rect.height, ...DEFAULT_GEOMETRY };
       const now = performance.now();
@@ -103,6 +115,13 @@ export function Stage({ series, divergenceRef, notes, paused, contentToken }: St
         color: colorForIndex(i, tokens),
       }));
       const split = isSplit(now, divergenceRef.current, visibleWindowMs(geometry));
+      // The one authoritative split decision (design §15.1), shared with
+      // App's readout via a ref — never React state, so this cannot trigger
+      // a render. Only frames that draw write it: while paused this line
+      // does not run, so the graph and the readout stay frozen together (F4).
+      splitRef.current = split;
+
+      if (!ctx) return; // Nothing to paint without a 2D context.
 
       drawStage(
         ctx,
@@ -118,7 +137,7 @@ export function Stage({ series, divergenceRef, notes, paused, contentToken }: St
 
     frame = requestAnimationFrame(render);
     return () => cancelAnimationFrame(frame);
-  }, [series, notes, divergenceRef]);
+  }, [series, notes, divergenceRef, splitRef]);
 
   return (
     <div className={styles.stage}>

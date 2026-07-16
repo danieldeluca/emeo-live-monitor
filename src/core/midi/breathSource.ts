@@ -35,11 +35,16 @@ interface Sample {
  * candidate's evidence is updated per message, so at most one candidate can
  * ever qualify in a given evaluation — there is no tie to break. Once a
  * source locks it stays locked for the session so the display cannot flap
- * mid-phrase.
+ * mid-phrase — that first source is the primary (`resolved`). Scoring keeps
+ * running afterwards: any later candidate that clears the thresholds joins
+ * the qualified set alongside it (`sources()`), so the real EMEO's habit of
+ * mirroring breath onto CC2, CC11, and CC7 at once can be tracked as a whole
+ * family rather than just one winner.
  */
 export class BreathDetector {
   private samples = new Map<string, Sample[]>();
   private locked: BreathSourceId | null = null;
+  private qualified: string[] = [];
 
   get resolved(): BreathSourceId | null {
     return this.locked;
@@ -56,14 +61,29 @@ export class BreathDetector {
     while (list.length > 0 && list[0].t < cutoff) list.shift();
     this.samples.set(key, list);
 
-    if (this.locked === null) this.tryLock();
+    this.tryQualify(key, list);
   }
 
+  /** Primary-only. Kept for existing callers; delegates to breathValueOf. */
   valueOf(msg: MidiMessage): number | null {
     if (this.locked === null) return null;
     const key = keyOf(msg);
     if (key === null || key !== keyOfId(this.locked)) return null;
     return breathValue(msg);
+  }
+
+  /** Every source that has qualified, primary first, then in qualifying order. */
+  sources(): BreathSourceId[] {
+    return this.qualified.map(idOfKey);
+  }
+
+  /** The value for any already-qualified source this message belongs to. */
+  breathValueOf(msg: MidiMessage): { source: BreathSourceId; value: number } | null {
+    const key = keyOf(msg);
+    if (key === null || !this.qualified.includes(key)) return null;
+    const value = breathValue(msg);
+    if (value === null) return null;
+    return { source: idOfKey(key), value };
   }
 
   scoreboard(): ScoreRow[] {
@@ -75,17 +95,16 @@ export class BreathDetector {
   reset(): void {
     this.samples.clear();
     this.locked = null;
+    this.qualified = [];
   }
 
-  private tryLock(): void {
-    // At most one candidate can qualify here: observe() records one candidate
-    // per message and locks the instant anything qualifies, so no second
-    // candidate ever gets to cross the thresholds in the same call.
-    const winner = [...this.samples.entries()].find(([, list]) => {
-      const s = stats(list);
-      return s.updates >= MIN_UPDATES && s.distinct >= MIN_DISTINCT && s.range >= MIN_RANGE;
-    });
-    if (winner) this.locked = idOfKey(winner[0]);
+  private tryQualify(key: string, list: Sample[]): void {
+    if (this.qualified.includes(key)) return;
+    const s = stats(list);
+    if (s.updates >= MIN_UPDATES && s.distinct >= MIN_DISTINCT && s.range >= MIN_RANGE) {
+      this.qualified.push(key);
+      if (this.locked === null) this.locked = idOfKey(key);
+    }
   }
 }
 

@@ -124,4 +124,70 @@ describe('BreathDetector', () => {
     expect(d.resolved).toBeNull();
     expect(d.scoreboard()).toEqual([]);
   });
+
+  it('reports both sources, primary first, when two controllers sweep identically', () => {
+    const d = new BreathDetector();
+    sweepCC(d, 2);
+    sweepCC(d, 11);
+    expect(d.sources()).toEqual([
+      { kind: 'cc', controller: 2 },
+      { kind: 'cc', controller: 11 },
+    ]);
+  });
+
+  it('keeps resolved as only the primary, unchanged when a later source qualifies', () => {
+    const d = new BreathDetector();
+    sweepCC(d, 2);
+    expect(d.resolved).toEqual({ kind: 'cc', controller: 2 });
+    sweepCC(d, 11, 30, 1000);
+    expect(d.resolved).toEqual({ kind: 'cc', controller: 2 });
+    expect(d.sources()).toEqual([
+      { kind: 'cc', controller: 2 },
+      { kind: 'cc', controller: 11 },
+    ]);
+  });
+
+  it('returns an empty sources() list before any lock', () => {
+    expect(new BreathDetector().sources()).toEqual([]);
+  });
+
+  it('breathValueOf returns {source, value} for any qualified source, null otherwise', () => {
+    const d = new BreathDetector();
+    sweepCC(d, 2);
+    sweepCC(d, 11, 30, 1000);
+
+    expect(d.breathValueOf({ type: 'cc', channel: 0, controller: 2, value: 99, t: 2000 })).toEqual({
+      source: { kind: 'cc', controller: 2 },
+      value: 99,
+    });
+    expect(d.breathValueOf({ type: 'cc', channel: 0, controller: 11, value: 42, t: 2000 })).toEqual({
+      source: { kind: 'cc', controller: 11 },
+      value: 42,
+    });
+    // Unqualified controller.
+    expect(
+      d.breathValueOf({ type: 'cc', channel: 0, controller: 7, value: 10, t: 2000 })
+    ).toBeNull();
+    // Non-breath message.
+    expect(
+      d.breathValueOf({ type: 'note-on', channel: 0, note: 60, velocity: 1, t: 2000 })
+    ).toBeNull();
+  });
+
+  it('breathValueOf returns null before any lock', () => {
+    const d = new BreathDetector();
+    expect(d.breathValueOf({ type: 'cc', channel: 0, controller: 2, value: 99, t: 0 })).toBeNull();
+  });
+
+  it('appends a third controller qualifying later, in the order it qualified', () => {
+    const d = new BreathDetector();
+    sweepCC(d, 2);
+    sweepCC(d, 11, 30, 1000);
+    sweepCC(d, 7, 30, 2000);
+    expect(d.sources()).toEqual([
+      { kind: 'cc', controller: 2 },
+      { kind: 'cc', controller: 11 },
+      { kind: 'cc', controller: 7 },
+    ]);
+  });
 });

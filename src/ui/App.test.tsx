@@ -276,4 +276,35 @@ describe('App breath divergence (Task V7, design §15)', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
     expect(screen.queryByText(/Blow into the EMEO/)).not.toBeInTheDocument();
   });
+
+  it('collapses the split readout back to a single value when Clear is clicked (Task V7 gap)', async () => {
+    render(<App environment={createSyntheticEnvironment({ diverge: true })} synthetic />);
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await screen.findByText('Connected to Synthetic EMEO');
+
+    // Wait for the split readout to appear. The diverge test's timing works because
+    // the synthetic instrument pushes the controllers apart enough to trigger split.
+    await screen.findByText('Expression (CC11)', {}, { timeout: 5000 });
+    expect(screen.getByText('Volume (CC7)')).toBeInTheDocument();
+
+    // Split rows are visible, single collapsed view is hidden.
+    expect(screen.queryByTestId('breath-value')).not.toBeInTheDocument();
+
+    // Click Clear.
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+
+    // Split rows must be gone.
+    expect(screen.queryByText('Expression (CC11)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Volume (CC7)')).not.toBeInTheDocument();
+
+    // Collapsed single form is back. After clear with no new data,
+    // clear() set readout to {kind:'single', value:null}, so BreathReadout
+    // renders either the single-value element or a placeholder.
+    // F3 test asserts the breath-value element shows "—".
+    expect(screen.getByTestId('breath-value')).toBeInTheDocument();
+    expect(screen.getByTestId('breath-value')).toHaveTextContent('—');
+
+    // Detection survives Clear (design §7.5) — no re-detect prompt.
+    expect(screen.queryByText(/Blow into the EMEO/)).not.toBeInTheDocument();
+  });
 });

@@ -202,3 +202,19 @@ reasoning in the design doc:
 - `docs/superpowers/specs/2026-07-15-emeo-live-monitor-design.md` — how it's built, and the recorded
   decisions above.
 - `docs/superpowers/plans/2026-07-15-emeo-live-monitor.md` — the task-by-task implementation plan.
+
+---
+
+## License
+
+Copyright © 2026 Daniel De Luca
+
+EMEO Live Monitor is free software: you can redistribute it and/or modify it under the terms of the
+**GNU Affero General Public License** as published by the Free Software Foundation, either version 3
+of the License, or (at your option) any later version. It is distributed in the hope that it will be
+useful, but **without any warranty** — without even the implied warranty of merchantability or fitness
+for a particular purpose. See the [full license text](LICENSE) for details.
+
+Because this project is under the AGPL-3.0, one obligation is worth calling out: **if you run a
+modified version of it as a network service, you must make your modified source available to that
+service's users.** This is the clause (AGPL §13) that keeps hosted forks open.

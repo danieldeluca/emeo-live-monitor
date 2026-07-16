@@ -36,6 +36,101 @@ describe('synthetic EMEO', () => {
     expect(conn.detector.resolved).toEqual({ kind: 'channel-pressure' });
   });
 
+  it('emits CC2, CC11, and CC7 with identical values and a shared timestamp on each frame by default', async () => {
+    const env = createSyntheticEnvironment();
+    const conn = createEmeoConnection(env);
+    const events: EmeoEvent[] = [];
+    conn.events.subscribe((e: EmeoEvent) => events.push(e));
+    await conn.connect();
+    const stop = startSynthetic(env);
+
+    vi.advanceTimersByTime(100);
+    stop();
+
+    const ccEvents = events.filter((e) => e.kind === 'raw' && e.data[0] === 0xb0);
+    expect(ccEvents.length).toBeGreaterThan(0);
+
+    const byTimestamp = new Map<number, number[]>();
+    for (const e of ccEvents) {
+      if (e.kind !== 'raw') continue;
+      const list = byTimestamp.get(e.t) ?? [];
+      list.push(e.data[1]);
+      byTimestamp.set(e.t, list);
+    }
+
+    for (const [t, controllers] of byTimestamp) {
+      // Emitted in order CC2, CC11, CC7 — CC2 first is what lets the
+      // detector lock onto it.
+      expect(controllers).toEqual([2, 11, 7]);
+      const values = ccEvents
+        .filter((e) => e.kind === 'raw' && e.t === t)
+        .map((e) => (e.kind === 'raw' ? e.data[2] : -1));
+      expect(new Set(values).size).toBe(1);
+    }
+  });
+
+  it("qualifies CC2, CC11, and CC7 as the detector's breath-source family after enough time", async () => {
+    const env = createSyntheticEnvironment();
+    const conn = createEmeoConnection(env);
+    await conn.connect();
+    const stop = startSynthetic(env);
+
+    vi.advanceTimersByTime(4000);
+    stop();
+
+    const sources = conn.detector.sources();
+    expect(sources).toEqual(
+      expect.arrayContaining([
+        { kind: 'cc', controller: 2 },
+        { kind: 'cc', controller: 11 },
+        { kind: 'cc', controller: 7 },
+      ]),
+    );
+    expect(sources).toHaveLength(3);
+  });
+
+  it('diverge:true offsets Expression and Volume from Breath by more than the divergence tolerance', async () => {
+    const env = createSyntheticEnvironment({ diverge: true });
+    const conn = createEmeoConnection(env);
+    const events: EmeoEvent[] = [];
+    conn.events.subscribe((e: EmeoEvent) => events.push(e));
+    await conn.connect();
+    const stop = startSynthetic(env);
+
+    vi.advanceTimersByTime(1000);
+    stop();
+
+    const byTimestamp = new Map<number, Map<number, number>>();
+    for (const e of events) {
+      if (e.kind !== 'raw' || e.data[0] !== 0xb0) continue;
+      const controller = e.data[1];
+      const value = e.data[2];
+      const forT = byTimestamp.get(e.t) ?? new Map<number, number>();
+      forT.set(controller, value);
+      byTimestamp.set(e.t, forT);
+    }
+
+    let sawDivergence = false;
+    for (const frame of byTimestamp.values()) {
+      const breath = frame.get(2);
+      const expression = frame.get(11);
+      const volume = frame.get(7);
+      expect(breath).toBeDefined();
+      expect(expression).toBeDefined();
+      expect(volume).toBeDefined();
+      if (breath === undefined || expression === undefined || volume === undefined) continue;
+
+      // Breath (CC2) keeps the true value — Expression and Volume are
+      // derived from it, never the other way round.
+      expect(expression).toBe(Math.round(breath * 0.6));
+      expect(volume).toBe(Math.max(0, Math.min(127, breath - 30)));
+
+      const spread = Math.max(breath, expression, volume) - Math.min(breath, expression, volume);
+      if (spread > 2) sawDivergence = true;
+    }
+    expect(sawDivergence).toBe(true);
+  });
+
   it('emits notes and breath', async () => {
     const env = createSyntheticEnvironment();
     const conn = createEmeoConnection(env);

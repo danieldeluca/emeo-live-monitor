@@ -3,18 +3,40 @@ import type { BreathSourceId } from '../core/midi/breathSource';
 import type { MidiAccessLike, MidiInputLike } from '../core/midi/types';
 
 export interface SyntheticOptions {
-  /** Which control the fake instrument uses for breath. Default: CC2. */
+  /**
+   * Which single control the fake instrument uses for breath. When given,
+   * only this source is emitted (e.g. to prove detection isn't CC-only via
+   * `{ kind: 'channel-pressure' }`). When omitted (the default), the
+   * synthetic mirrors real hardware: CC2 (Breath), CC11 (Expression), and
+   * CC7 (Volume) every frame, in that order.
+   */
   breathSource?: BreathSourceId;
   /** Milliseconds per note. Default: 600. */
   tempoMs?: number;
+  /**
+   * Only meaningful with the three-CC default (ignored when `breathSource`
+   * is given). When true, offsets Expression and Volume from Breath by a
+   * clear, sustained amount so the split multi-curve view can be exercised.
+   * Breath (CC2) always carries the true value.
+   */
+  diverge?: boolean;
 }
 
 const BREATH_INTERVAL_MS = 10;
 const PHRASE = [60, 62, 64, 65, 67, 69, 71, 72];
 
+/** The real EMEO mirrors breath onto these three controllers, in this order. */
+const BREATH_CC = 2;
+const EXPRESSION_CC = 11;
+const VOLUME_CC = 7;
+
 interface SyntheticEnvironment extends MidiEnvironment {
   __input: MidiInputLike;
-  __options: Required<SyntheticOptions>;
+  __options: {
+    breathSource?: BreathSourceId;
+    tempoMs: number;
+    diverge: boolean;
+  };
   __running?: boolean;
 }
 
@@ -35,8 +57,9 @@ export function createSyntheticEnvironment(options: SyntheticOptions = {}): Midi
     requestMIDIAccess: async () => access,
     __input: input,
     __options: {
-      breathSource: options.breathSource ?? { kind: 'cc', controller: 2 },
+      breathSource: options.breathSource,
       tempoMs: options.tempoMs ?? 600,
+      diverge: options.diverge ?? false,
     },
   };
   return env;
@@ -77,8 +100,21 @@ export function startSynthetic(env: MidiEnvironment): () => void {
   };
 
   const sendBreath = (value: number) => {
-    if (options.breathSource.kind === 'channel-pressure') send(0xd0, value);
-    else send(0xb0, options.breathSource.controller, value);
+    if (options.breathSource) {
+      // A single custom source, e.g. channel pressure — proves the detector
+      // isn't CC-specific. No mirroring in this mode.
+      if (options.breathSource.kind === 'channel-pressure') send(0xd0, value);
+      else send(0xb0, options.breathSource.controller, value);
+      return;
+    }
+    // Default: mirror real hardware, which sends CC2/CC11/CC7 every frame
+    // with identical values, sharing the same timestamp. CC2 goes first so
+    // detection locks onto it, exactly as the real EMEO does.
+    const expression = options.diverge ? Math.round(value * 0.6) : value;
+    const volume = options.diverge ? Math.max(0, Math.min(127, value - 30)) : value;
+    send(0xb0, BREATH_CC, value);
+    send(0xb0, EXPRESSION_CC, expression);
+    send(0xb0, VOLUME_CC, volume);
   };
 
   const timer = setInterval(() => {

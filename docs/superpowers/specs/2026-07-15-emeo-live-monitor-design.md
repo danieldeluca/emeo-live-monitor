@@ -423,3 +423,71 @@ Business spec §166–177 applies unchanged, with two amendments arising from §
 - "The raw monitor shows readable incoming messages" is met by the **console logger** with the debug
   flag enabled.
 - "Notation can be switched between standard and solfège" is met by **both being shown at once**.
+
+---
+
+## 15. v1.1 — Multiple breath controllers
+
+The first hardware session (§12.1) found the EMEO transmits breath on **three controllers at once with
+identical values**: CC2 (Breath), CC11 (Expression), CC7 (Volume). v1 tracks and draws only the primary
+(CC2). This increment shows the others **only when they carry different information** — i.e. when they
+diverge — so the common case (identical) stays a single clean green curve.
+
+### 15.1 Behaviour
+
+- **The detector tracks the whole breath *family*, not one source.** Every controller that clears the
+  §8 thresholds joins the tracked set; the first to lock stays the **primary** and continues to drive
+  the meter, the note-history alignment, the detection signal, and the collapsed numeric readout —
+  unchanged from v1. The others are additional buffered series.
+- **Each tracked controller gets its own ring buffer.** The breath event now carries a `source`, so App
+  routes each sample to the correct ring.
+- **Divergence is judged frame-by-frame.** The three CCs share the same MIDI `timeStamp` each frame, so
+  samples are grouped by timestamp and a frame *diverges* when its max−min value exceeds
+  `DIVERGENCE_TOLERANCE = 2` (ignores ≤2-LSB jitter; catches a genuinely shaped Expression/Volume).
+- **Split display follows the scrolling window (the user's "live" choice, made coherent for a history
+  graph).** The lane splits into colour-coded curves whenever a divergence is visible *anywhere in the
+  ~15s window* — computed in O(1) as `now − lastDivergenceT ≤ visibleWindowMs`. It collapses back to the
+  single green curve only once the last divergence has scrolled off the bottom, so the graph never
+  erases visible history and never strobes.
+- **Labels are `Breath (CC2)` style** — friendly name (translatable) plus the raw CC number, per the
+  user's choice. Unknown controllers fall back to `CC14`. When split, the numeric readout becomes a
+  short stack of these labels, one per series.
+
+### 15.2 Palette (validated, dark surface `#0e1117`)
+
+Colours are assigned to series in fixed order, never cycled. Chosen to avoid the app's existing colour
+semantics — **blue `#4ea3ff` means notes, red `#ff5c5c` is the now-line** — so breath series use green
+and warm/violet hues only.
+
+| Series | Controller | Colour | Note |
+|---|---|---|---|
+| 1 (primary) | Breath (CC2) | `#34d399` green | existing breath colour, unchanged |
+| 2 | Expression (CC11) | `#eda100` amber | new token |
+| 3 | Volume (CC7) | `#9085e9` violet | new token |
+
+Validated with the dataviz skill's script against `#0e1117`: worst-adjacent CVD ΔE **12.5** (target ≥8),
+normal-vision ΔE **21.9** (floor ≥15), contrast **all ≥3:1**. The script's lightness-band check FAILs
+because the app deliberately runs bright neon marks on a *darker* surface than the reference's `#1a1a19`
+(and the primary green is fixed app identity) — on `#0e1117` "too light" aids rather than harms
+legibility, which the passing contrast confirms. Identity is never colour-alone: every series also
+carries its text label (the skill's secondary-encoding relief). Per the user's explicit instruction the
+value labels are themselves coloured to match their curves (this overrides the skill's default of
+text-in-ink-plus-a-coloured-mark).
+
+### 15.3 Rendering
+
+When collapsed, the breath lane draws exactly as v1: one filled green curve. When split, each series is a
+2px coloured stroke (no fill — overlapping translucent fills would muddy), so the shapes stay legible
+where they cross. The meter continues to show the primary only.
+
+### 15.4 Demo & test support
+
+The synthetic EMEO is extended to emit CC2/CC11/CC7 with **identical** values by default — matching the
+real instrument — with an option to make Expression/Volume diverge, so the split view can be exercised in
+tests, in CI, and as a `?diverge` demo without hardware.
+
+### 15.5 Still one instrument, still no assumption baked in
+
+If a future EMEO or mode makes the controllers carry genuinely different meaning (e.g. Expression a
+shaped curve, Volume a master level), this display already surfaces it and separate *interpretation* can
+follow — driven by observed divergence, not assumed now.

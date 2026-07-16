@@ -375,18 +375,33 @@ guessed the EMEO correctly.
 
 ## 12. Assumptions to verify against real hardware
 
-1. **Which control carries breath.** Unknown (§187). Detection handles this at runtime; the console
-   session confirms it.
-2. **Octave numbering.** This design uses scientific pitch notation: MIDI 60 = C4 = middle C. Yamaha's
-   convention names that C3. If the player's sheet music uses the other, every octave number is off
-   by one.
-3. **Transposition.** A saxophone is a transposing instrument; on an alto, a written C sounds concert
-   E♭. Whether the EMEO transmits written or concert pitch is unknown. **v1 displays exactly what the
-   EMEO sends.** This matters greatly for the §196 sight-reading trainer and is cheap to record now.
-4. **Breath resolution.** Whether the EMEO uses the full 0–127 range is unconfirmed. The readout shows
-   the raw value against 127 rather than a rescaled percentage, so the truth is visible.
-5. **Bite / additional expression data.** §187 raises the possibility. Any unrecognised messages flow
-   through as `raw` events and appear in the console log; nothing is silently discarded.
+> **First hardware session — 16 July 2026.** A real EMEO was connected over USB and its raw MIDI
+> captured via the `?debug` console. Findings are recorded inline below. Items 1, 4, and 5 are now
+> **confirmed**; items 2 and 3 (octave convention and transposition) still need a known written
+> reference pitch to settle and remain open.
+
+1. **Which control carries breath.** **CONFIRMED.** The EMEO transmits breath on **three controllers
+   at once, with identical values**: CC2 (Breath Controller), CC11 (Expression), and CC7 (Volume),
+   emitted in that order every frame. Runtime detection locks **CC2** — each frame sends it first, so
+   it crosses the thresholds a message ahead of the other two. This vindicates both runtime detection
+   (a CC2-only hard-code would have been right by luck) and the removal of the CC2 prior in §8 (the
+   three are byte-identical, so the choice is immaterial to the curve). Future tools may read any of
+   the three; they carry the same data.
+2. **Octave numbering.** Still open. This design uses scientific pitch notation: MIDI 60 = C4 = middle
+   C. Yamaha's convention names that C3. Settling this needs a note played against a known written
+   reference (see item 3).
+3. **Transposition.** Still open. A saxophone is a transposing instrument; on an alto, a written C
+   sounds concert E♭. The first session captured a descending passage (MIDI 61→50, shown as C♯4 down
+   to D3) but without a recorded "this is the written note I fingered" reference, so written-vs-concert
+   cannot yet be concluded. **v1 displays exactly what the EMEO sends.** This matters greatly for the
+   §196 sight-reading trainer. *To close: finger a known written C and record the note name shown.*
+4. **Breath resolution.** **CONFIRMED: full 0–127.** The captured stream sweeps cleanly from 0 to 127
+   and back on all three breath controllers, so the "of 127" readout reflects the instrument's true
+   range rather than a rescaled percentage.
+5. **Bite / additional expression data.** **CONFIRMED: none beyond the triple-mirrored breath.** The
+   session showed only note on/off (with meaningful attack velocity, e.g. vel 6 soft to vel 127 hard),
+   plus CC2/CC11/CC7. No channel pressure, no pitch bend, no bite CC, no other controllers. Nothing is
+   hidden; the `raw` event path would have surfaced anything unrecognised.
 
 ---
 

@@ -33,3 +33,6 @@ pnpm-debug.log*
 
 # Brainstorming scratch — mockups from the design session, kept locally, not versioned
 .superpowers/
+
+# Playwright MCP scratch output
+.playwright-mcp/

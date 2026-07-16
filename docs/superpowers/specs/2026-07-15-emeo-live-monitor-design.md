@@ -387,18 +387,23 @@ guessed the EMEO correctly.
    (a CC2-only hard-code would have been right by luck) and the removal of the CC2 prior in §8 (the
    three are byte-identical, so the choice is immaterial to the curve). Future tools may read any of
    the three; they carry the same data.
-2. **Octave numbering.** **Informed.** This design uses scientific pitch notation: MIDI 60 = C4 =
-   middle C. The written C-major scale in the second capture landed at MIDI 48–59 — displayed C3–B3 —
-   i.e. the octave below middle C. The app renders exactly the MIDI numbers received, consistent with
-   scientific notation. Whether the app's "C3" label matches what the player reads on the page depends
-   only on which written octave was fingered (a display convention, not a hardware fact); the
-   note-number mapping itself is settled. No code change needed for v1.
-3. **Transposition.** **CONFIRMED: none — the EMEO transmits written (fingered) pitch.** The second
-   capture was a **known written C-major scale**; it displayed as C-major naturals (C D E F G A B, no
-   accidentals). A transposing instrument applying concert pitch would have shown flats (a written C
-   scale sounds E♭ major on an alto, B♭ major on a tenor). Pure naturals means the EMEO sends the
-   written note as-is, with no transposition. **v1 already displays exactly this**, so no change is
-   needed — and the future §196 sight-reading trainer can treat incoming MIDI as written pitch directly.
+2. **Octave numbering.** **Informed; one detail to confirm.** This design uses scientific pitch
+   notation: MIDI 60 = C4 = middle C. The written C-major scale in the second capture landed at MIDI
+   48–59 — displayed **C3–B3**, the octave below middle C. Most MIDI wind controllers map written
+   middle C to MIDI 60, so a "written C" scale would be expected around C4–B4; landing an octave lower
+   suggests either the scale was fingered in the low register, or the EMEO's MIDI-out sits one octave
+   below the written staff. This is a display-label convention, not a hardware correctness issue — the
+   app renders received MIDI numbers faithfully and v1 needs no change — but the §196 sight-reading
+   trainer should confirm the mapping (finger written middle C, note the number) before drawing a staff.
+3. **Transposition.** **CONFIRMED: none — the EMEO transmits written (fingered) pitch.** The
+   instrument was **configured as a B♭ tenor**, which makes this a genuine transposition test: on a B♭
+   tenor a written C-major scale *sounds* concert B♭ major (B♭ C D E♭ F G A — with flats). The capture
+   was a known **written** C-major scale and it displayed as **C-major naturals** (C D E F G A B, no
+   accidentals) — the written notes, not the concert-sounding ones. So the EMEO does **not** apply its
+   B♭-tenor transposition to the MIDI it sends; it emits the fingered note as-is. **v1 already displays
+   exactly this**, so no change is needed. Implications for the future §196 sight-reading trainer: it
+   can treat incoming MIDI as written pitch directly (ideal — it matches the printed part the player
+   reads); a concert-pitch playalong mode, if ever wanted, would transpose display down a major second.
 4. **Breath resolution.** **CONFIRMED: full 0–127.** The captured stream sweeps cleanly from 0 to 127
    and back on all three breath controllers, so the "of 127" readout reflects the instrument's true
    range rather than a rescaled percentage.

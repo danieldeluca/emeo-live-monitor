@@ -162,3 +162,118 @@ describe('App debug flag (F5)', () => {
     expect(window.__emeoResetBreathDetection).toBeUndefined();
   });
 });
+
+describe('App breath divergence (Task V7, design §15)', () => {
+  it('shows a single collapsed value and no split rows when the controllers agree (default synthetic)', async () => {
+    render(<App environment={createSyntheticEnvironment()} synthetic />);
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await screen.findByText('Connected to Synthetic EMEO');
+
+    await screen.findByText(/of 127/, {}, { timeout: 3000 });
+
+    expect(screen.queryByText('Expression (CC11)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Volume (CC7)')).not.toBeInTheDocument();
+  });
+
+  it('splits into three colour-matched, labelled rows when the controllers diverge (?diverge)', async () => {
+    render(<App environment={createSyntheticEnvironment({ diverge: true })} synthetic />);
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await screen.findByText('Connected to Synthetic EMEO');
+
+    expect(await screen.findByText('Breath (CC2)', {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByText('Expression (CC11)')).toBeInTheDocument();
+    expect(screen.getByText('Volume (CC7)')).toBeInTheDocument();
+    // The collapsed single-value view is not also rendered alongside the split rows.
+    expect(screen.queryByTestId('breath-value')).not.toBeInTheDocument();
+  });
+
+  it('collapses the split readout back to a single value once the divergence scrolls off the ~15s window', async () => {
+    // The split/collapse decision (isSplit in breathDivergence.ts) is driven
+    // entirely by MIDI event timestamps (design §6: "never the time the
+    // handler ran"), never real wall-clock time. So rather than waiting 15
+    // real seconds (slow) or faking a clock the app doesn't actually read,
+    // this scripts event timestamps directly against a hand-built fake
+    // input — the same technique the F1c test above already uses. It
+    // exercises the exact production call App makes,
+    // isSplit(event.t, tracker.lastDivergenceT, READOUT_WINDOW_MS), just
+    // compressed onto a short real-time test run. What this does NOT cover:
+    // Stage's canvas redraw of the collapse, which jsdom cannot render or
+    // assert on regardless of timing strategy (see the manual-verification
+    // report for that half).
+    const input = fakeInput('emeo', 'EMEO');
+    const access: MidiAccessLike = { inputs: new Map([[input.id, input]]), onstatechange: null };
+    const env = { isSecureContext: true, requestMIDIAccess: async () => access };
+
+    render(<App environment={env} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await screen.findByText('Connected to EMEO');
+
+    const send = (t: number, controller: number, value: number) => {
+      act(() => {
+        input.onmidimessage!({ data: new Uint8Array([0xb0, controller, value]), timeStamp: t });
+      });
+    };
+
+    // Qualify CC2/CC11/CC7 as breath sources (design §8: >=20 updates, >=8
+    // distinct values, range >=32, inside a rolling 3s window) with an
+    // identical sweep across all three, matching the real instrument's habit
+    // of mirroring breath onto all three at once.
+    let t = 0;
+    for (let i = 0; i < 25; i++) {
+      const value = 10 + i * 4; // 25 distinct values, range 96
+      send(t, 2, value);
+      send(t, 11, value);
+      send(t, 7, value);
+      t += 10;
+    }
+
+    // One diverging frame: spread 80 > tolerance 2.
+    send(t, 2, 64);
+    send(t, 11, 20);
+    send(t, 7, 100);
+    const divergedAt = t;
+
+    // A frame is only evaluated once the *next* frame's first sample
+    // arrives (design §15.1) — send a run of identical follow-up frames,
+    // which also gives the throttled readout room to catch up to split.
+    for (let i = 0; i < 10; i++) {
+      t += 10;
+      send(t, 2, 64);
+      send(t, 11, 64);
+      send(t, 7, 64);
+    }
+
+    expect(await screen.findByText('Expression (CC11)')).toBeInTheDocument();
+
+    // Jump the instrument's clock past the ~15s window measured from the
+    // last divergence, still sending identical (non-diverging) values.
+    t = divergedAt + 15_000 + 100;
+    send(t, 2, 64);
+    send(t, 11, 64);
+    send(t, 7, 64);
+
+    expect(screen.queryByText('Expression (CC11)')).not.toBeInTheDocument();
+    expect(screen.getByTestId('breath-value')).toBeInTheDocument();
+  });
+
+  it('still freezes the readout while paused, and still does not re-show the detect prompt after Clear, with multiple tracked series', async () => {
+    render(<App environment={createSyntheticEnvironment({ diverge: true })} synthetic />);
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await screen.findByText('Connected to Synthetic EMEO');
+    await screen.findByText('Expression (CC11)', {}, { timeout: 5000 });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    const frozenRows = screen.getAllByTestId('breath-split-value').map((el) => el.textContent);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    });
+
+    expect(screen.getAllByTestId('breath-split-value').map((el) => el.textContent)).toEqual(
+      frozenRows,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.queryByText(/Blow into the EMEO/)).not.toBeInTheDocument();
+  });
+});

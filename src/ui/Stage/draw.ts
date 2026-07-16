@@ -31,15 +31,20 @@ export function drawStage(
   ctx.fillStyle = tokens.surface;
   ctx.fillRect(0, 0, totalWidth, g.height);
 
-  drawMeter(ctx, series[0].ring, g, tokens);
+  // Guard: before any breath source has qualified, `series` is empty (F-guard,
+  // design §15). Draw the meter empty and skip the curve entirely rather than
+  // index series[0].
+  drawMeter(ctx, series[0]?.ring ?? null, g, tokens);
 
   ctx.save();
   ctx.translate(METER_WIDTH, 0);
-  if (split) {
-    // Primary first so later (top) series paint over it where curves cross.
-    for (const s of series) drawBreathStroke(ctx, now, s.ring, g, s.color);
-  } else {
-    drawBreathFilled(ctx, now, series[0].ring, g, series[0].color);
+  if (series.length > 0) {
+    if (split) {
+      // Primary first so later (top) series paint over it where curves cross.
+      for (const s of series) drawBreathStroke(ctx, now, s.ring, g, s.color);
+    } else {
+      drawBreathFilled(ctx, now, series[0].ring, g, series[0].color);
+    }
   }
   ctx.restore();
 
@@ -53,17 +58,21 @@ export function drawStage(
   ctx.fillRect(0, y - 1, totalWidth, 2);
 }
 
-/** FR-10: the live level, spanning the instrument's full range. */
+/**
+ * FR-10: the live level, spanning the instrument's full range. `ring` is
+ * `null` before any breath source has qualified — the meter simply reads as
+ * empty (value 0) rather than crashing.
+ */
 function drawMeter(
   ctx: CanvasRenderingContext2D,
-  ring: BreathRing,
+  ring: BreathRing | null,
   g: StageGeometry,
   tokens: StageTokens,
 ): void {
   ctx.fillStyle = tokens.track;
   ctx.fillRect(0, 0, METER_WIDTH, g.height);
 
-  const value = ring.latest?.value ?? 0;
+  const value = ring?.latest?.value ?? 0;
   const h = meterFillHeight(value, g.height);
   ctx.fillStyle = tokens.breath;
   ctx.fillRect(0, g.height - h, METER_WIDTH, h);
